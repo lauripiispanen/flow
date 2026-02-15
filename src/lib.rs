@@ -7,12 +7,15 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod claude;
+pub mod cli;
 pub mod cycle;
 pub mod log;
 
 // Re-export commonly used types
 pub use claude::cli::build_command;
 pub use claude::permissions::resolve_permissions;
+pub use claude::stream::{parse_event, StreamAccumulator, StreamEvent};
+pub use cli::CycleDisplay;
 pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig};
 pub use cycle::executor::{CycleExecutor, CycleResult, PreparedCycle};
 pub use cycle::rules::find_triggered_cycles;
