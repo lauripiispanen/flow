@@ -93,18 +93,22 @@
   - Completed: 2026-02-14
 
 ### Cycle Rules Engine
-- [ ] Parse `after: [...]` from cycle config
-  - Status: Not Started
+- [x] Parse `after: [...]` from cycle config
+  - Status: Completed
   - Priority: P0
   - Files: `src/cycle/rules.rs`
+  - Completed: 2026-02-15
 
-- [ ] Implement rule evaluator
-  - Status: Not Started
+- [x] Implement rule evaluator
+  - Status: Completed
   - Priority: P0
+  - Files: `src/cycle/rules.rs`
+  - Completed: 2026-02-15
 
 - [ ] Trigger dependent cycles automatically
   - Status: Not Started
   - Priority: P0
+  - Description: Wire find_triggered_cycles into the CLI/executor to auto-run dependent cycles
 
 ### CLI Interface
 - [ ] Implement `--cycle <name>` argument
@@ -297,6 +301,24 @@
 - `--allowedTools` omitted when no permissions provided
 - `--output-format stream-json` for structured streaming output
 - Re-exported `build_command` from `lib.rs`
+
+### 2026-02-15 - Cycle Rules Engine
+
+**Completed:**
+- [x] Parse `after: [...]` from cycle config
+- [x] Implement rule evaluator
+
+**Implementation:**
+- Files: `src/cycle/rules.rs`, `src/cycle/mod.rs`, `src/lib.rs`
+- Tests: 8 comprehensive tests passing
+- Coverage: `find_triggered_cycles()` — given a completed cycle name, finds all cycles whose `after` list references it
+
+**Notes:**
+- Simple, focused function: iterates config cycles, filters by `after` dependency
+- Returns cycle names in config definition order
+- Handles: chain deps, multiple deps, empty cycles, unknown cycle names, self-references
+- Re-exported `find_triggered_cycles` from `lib.rs`
+- Remaining: wire into CLI/executor to auto-trigger dependent cycles
 
 ### 2026-02-14 - JSONL Logger
 

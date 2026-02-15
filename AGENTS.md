@@ -59,12 +59,12 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine
 **In Progress**: Nothing
-**Next**: Outcome extraction | Cycle Rules Engine | CLI Interface (see TODO.md)
+**Next**: Outcome extraction | CLI Interface | Auto-trigger dependent cycles (see TODO.md)
 
 **Test Status**:
-- ✅ 50 passing (pipeline + jsonl + config + permissions + cli + executor)
+- ✅ 58 passing (pipeline + jsonl + config + permissions + cli + executor + rules)
 - ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
 
 **Component Status**:
@@ -75,7 +75,7 @@ Cycle Executor         | ✅ | src/cycle/executor.rs (12 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (7 tests)
 Output Streamer        | ✅ | Built into executor (async line-by-line streaming)
 JSONL Logger          | ✅ | src/log/jsonl.rs (6 tests)
-Cycle Rules Engine    | ❌ | src/cycle/rules.rs
+Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
 CLI Interface         | ❌ | src/main.rs
 cycles.toml           | ❌ | cycles.toml
 ```
