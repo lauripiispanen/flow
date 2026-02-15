@@ -1,0 +1,23 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Plans and temporary files
+*.tmp
+
+# Flow runtime state (JSONL logs, progress)
+.flow/
+
+# Environment
+.env
+.env.local

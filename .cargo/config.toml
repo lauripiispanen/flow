@@ -1,0 +1,13 @@
+[build]
+# Enable all warnings and treat them as errors in CI
+# rustflags = ["-D", "warnings"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[alias]
+# Helpful aliases for development
+check-all = "check --all-targets --all-features"
+test-all = "test --all-targets --all-features"
+clippy-all = "clippy --all-targets --all-features -- -D warnings"
+fmt-check = "fmt -- --check"

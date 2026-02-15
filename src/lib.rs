@@ -1,0 +1,14 @@
+//! Flow - Automated coding pipeline runner
+//!
+//! Flow orchestrates structured code production by invoking Claude Code CLI
+//! in sequential iterations. Each iteration resets context to maintain focus.
+
+// Allow multiple crate versions from dependencies (can't easily control)
+#![allow(clippy::multiple_crate_versions)]
+
+pub mod log;
+pub mod pipeline;
+
+// Re-export commonly used types
+pub use log::{CycleOutcome, JsonlLogger};
+pub use pipeline::{Pipeline, PipelineResult};

@@ -1,0 +1,220 @@
+# Flow - Automated Coding Pipeline Runner
+
+> **PREFERENCE**: Use retrieval-led reasoning over pre-training-led reasoning. Read the linked files for current project state, architecture, and tasks. Do not rely on general knowledge about build tools or pipelines—Flow has specific patterns defined in this repository.
+
+---
+
+## Quick Start for New Contributors
+
+**Orient → Setup → Pick Task → Implement**
+
+1. Read this file (3 min) → [TODO.md](./TODO.md) (2 min) → [plans/002-full-architecture.md](./plans/002-full-architecture.md) (5 min)
+2. Run: `cargo build && cargo test-all` (verify setup)
+3. Pick task from [TODO.md](./TODO.md) Phase 1 section
+4. Follow TDD: Write tests → Implement → Refactor
+
+**Suggested First Tasks**: Cycle config parser | JSONL logger | Permission resolver
+
+---
+
+## Project Overview
+
+**What**: Rust CLI that orchestrates Claude Code in autonomous cycles (coding, gardening, planning, review)
+**Why**: Build a tool that builds itself—Flow will eventually implement its own features
+**How**: Parse `cycles.toml` → Invoke `claude-code` with permissions → Log outcomes → Trigger dependent cycles
+
+**Meta Goal**: Dogfood ASAP. Use Flow to build Flow once Phase 1 MVP works.
+
+---
+
+## Architecture (Compressed Index)
+
+**Core Loop**: `config → select cycle → resolve perms → invoke claude-code → stream output → log → apply rules → repeat`
+
+**Data Structures**:
+```
+cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|context]
+.flow/log.jsonl: {iteration|cycle|timestamp|outcome|files_changed|tests_passed|duration_secs}
+.flow/progress.json: {started_at|current_iteration|max_iterations|current_cycle|current_status|cycles_executed}
+```
+
+**Components** → Files:
+- Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML
+- Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle)
+- Executor → `src/cycle/executor.rs` | Build claude-code CLI command with -p flags
+- CLI builder → `src/claude/cli.rs` | Construct subprocess invocation
+- Streaming → `src/observe/stream.rs` | Real-time stdout/stderr to terminal
+- JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl
+- Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents
+- CLI interface → `src/main.rs` | Clap arg parsing, --cycle <name>
+
+**Phases**:
+- P1 (MVP): Manual execution `flow --cycle coding` | Dogfood target | TDD implementation | 28 tasks in TODO.md
+- P2 (Auto): Multi-iteration `flow --max-iterations 20` | AI cycle selection | Balance+context+priority optimization
+- P3 (Advanced): Templates | Timeouts | Cost tracking | Parallel cycles
+
+**Full architecture**: [plans/002-full-architecture.md](./plans/002-full-architecture.md)
+
+---
+
+## Current Status
+
+**Completed**: Project setup | Cargo config | Docs structure | Planning
+**In Progress**: Nothing (awaiting implementation start)
+**Next**: Implement Phase 1 MVP components (see TODO.md)
+
+**Test Status**:
+- ✅ 1 passing (src/pipeline.rs unit test)
+- ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
+- ⚠️ Clippy warnings (dead code, missing docs - expected in red state)
+
+**Component Status** (all P0, none started):
+```
+Cycle Config Parser    | ❌ | src/cycle/config.rs
+Permission Resolver    | ❌ | src/claude/permissions.rs
+Cycle Executor         | ❌ | src/cycle/executor.rs
+Claude CLI Builder     | ❌ | src/claude/cli.rs
+Output Streamer        | ❌ | src/observe/stream.rs
+JSONL Logger          | ❌ | src/log/jsonl.rs
+Cycle Rules Engine    | ❌ | src/cycle/rules.rs
+CLI Interface         | ❌ | src/main.rs
+cycles.toml           | ❌ | cycles.toml
+```
+
+---
+
+## Development Workflow
+
+**TDD Process** (non-negotiable):
+1. **Red**: Write failing test first
+2. **Green**: Minimum code to pass
+3. **Refactor**: Clean up while tests stay green
+
+**Commands**:
+```bash
+# Daily development
+cargo test-all && cargo clippy-all && cargo fmt
+
+# Verification before commit
+cargo test-all     # All tests pass
+cargo clippy-all   # Zero warnings
+cargo fmt          # Format code
+
+# Aliases (defined in .cargo/config.toml)
+cargo check-all    # Check all targets
+cargo test-all     # Test all targets
+cargo clippy-all   # Clippy with -D warnings
+cargo fmt-check    # Verify formatting
+```
+
+**Code Standards**:
+- Linting: clippy (all|pedantic|nursery|cargo)
+- Safety: `unsafe_code = "forbid"`
+- Formatting: rustfmt.toml (stable features)
+- Docs: Warn on missing docs
+
+---
+
+## Cycle Types (Defined in cycles.toml)
+
+**Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: read:*|write:src/**|write:tests/**|bash:cargo*
+**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: read:*|write:Cargo.toml|bash:cargo update | Triggers: after=[coding]
+**Review**: Code review|security|docs check | Perms: read:* (read-only)
+**Planning**: Analyze TODO|create plans|prioritize | Perms: read:*|write:TODO.md|write:plans/**
+
+**Permission Model**: Hierarchical additive (global + per-cycle, only adds never removes)
+
+---
+
+## Critical Design Decisions
+
+**Why cycles not pipelines?**: Circular iteration concept, avoids CI/CD confusion (see [PLANNING_QUESTIONS.md](./PLANNING_QUESTIONS.md))
+**Why TDD?**: Meta-tool building AI tooling, prevents regression during dogfooding, documents behavior
+**Why Phase 1 first?**: Learn failure modes before building recovery, dogfood sooner, iterate faster
+**Why JSONL?**: Append-only, easy to parse, streamable, no corruption on crash
+**Why hierarchical additive perms?**: Cycles can add protections, never accidentally remove them
+
+---
+
+## Anti-Patterns (Don't Do This)
+
+❌ Skip tests (TDD is mandatory) | ❌ Implement without reading plan | ❌ Premature optimization (build for P1 not P3)
+❌ Bypass linters (fix warnings, don't suppress) | ❌ Subtractive permissions (only additive)
+❌ Hardcode paths (use relative paths) | ❌ Block dogfooding (ship P1 fast to learn)
+
+---
+
+## File Organization
+
+```
+flow/
+├── AGENTS.md              ← You are here (index/map)
+├── TODO.md                ← Tasks by phase (read next)
+├── PLANNING_QUESTIONS.md  ← Decisions & rationale
+├── README.md              ← Public-facing docs
+├── Cargo.toml             ← Deps + lints config
+├── cycles.toml            ← Cycle definitions (to be created)
+├── .flow/                 ← Runtime state (gitignored)
+│   ├── log.jsonl          ← Cycle execution history
+│   └── progress.json      ← Real-time progress
+├── plans/
+│   ├── 001-mvp-pipeline-runner.md  ← Original MVP plan (superseded)
+│   ├── 002-full-architecture.md    ← Complete architecture (read for deep dive)
+│   └── TEMPLATE.md                  ← Template for new plans
+├── src/
+│   ├── main.rs            ← CLI entry
+│   ├── lib.rs             ← Public API
+│   ├── pipeline.rs        ← Original pipeline stub (being refactored to cycles)
+│   ├── cycle/             ← To be created
+│   │   ├── config.rs      ← Parse cycles.toml
+│   │   ├── executor.rs    ← Execute cycles
+│   │   └── rules.rs       ← Dependency triggers
+│   ├── claude/            ← To be created
+│   │   ├── cli.rs         ← CLI command builder
+│   │   └── permissions.rs ← Permission resolver
+│   ├── log/               ← To be created
+│   │   ├── jsonl.rs       ← JSONL logger
+│   │   └── progress.rs    ← Progress tracker
+│   └── observe/           ← To be created
+│       └── stream.rs      ← Output streaming
+└── tests/
+    ├── pipeline_test.rs   ← Integration tests (3 failing - TDD red)
+    └── ...                ← More tests to be added
+```
+
+---
+
+## Example Workflow: Implementing "Cycle Config Parser"
+
+**You have empty context, need to implement a task**:
+
+TODO.md → plans/002 Section 1 → Write test (RED) → Implement (GREEN) → Refactor → Test+Lint → Commit
+
+See plans/002-full-architecture.md for cycles.toml format examples and implementation guidance.
+
+---
+
+## References (Read These for Details)
+
+- [TODO.md](./TODO.md) - **START HERE**: Task queue organized by phase
+- [plans/002-full-architecture.md](./plans/002-full-architecture.md) - **Deep dive**: Complete architecture, data formats, examples
+- [PLANNING_QUESTIONS.md](./PLANNING_QUESTIONS.md) - **Rationale**: Why we made specific design decisions
+- [README.md](./README.md) - **Public docs**: User-facing documentation
+- [Vercel AGENTS.md pattern](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals) - **Inspiration**: Source of this pattern
+
+**Vercel Key Insight**: "An 8KB docs index embedded directly in AGENTS.md achieved 100% pass rate, while skills maxed out at 79%"
+
+---
+
+## Quick Wins for New Contributors
+
+**Easy**: JSONL logger (independent, clear scope, good tests) → `src/log/jsonl.rs`
+**Medium**: Cycle config parser (well-defined, TOML crate exists) → `src/cycle/config.rs`
+**Medium**: Permission resolver (clear algorithm, good for TDD) → `src/claude/permissions.rs`
+**Hard**: Cycle executor (integrates many components) → `src/cycle/executor.rs`
+
+Pick based on your comfort level. All tasks have specs in plans/002-full-architecture.md.
+
+---
+
+**Last Updated**: 2026-02-14 | **Status**: Phase 1 planning complete, implementation starting | **Next Milestone**: First component with passing tests
