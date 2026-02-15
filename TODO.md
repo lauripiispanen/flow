@@ -9,11 +9,11 @@
 ### 🌱 Meta: First Dogfooding Milestone
 
 - [ ] Use Flow to run `/coding-iteration` as a cycle
-  - Status: Not Started
+  - Status: Ready to Test (all prerequisites complete)
   - Priority: P0 (Validates entire system)
   - Description: Create a "coding" cycle in cycles.toml that invokes /coding-iteration skill
   - Success: Flow successfully executes `flow --cycle coding`, completes a task, logs to JSONL
-  - Dependencies: cycles.toml, config parser, executor, JSONL logger ✅, CLI
+  - Dependencies: cycles.toml ✅, config parser ✅, executor ✅, JSONL logger ✅, CLI ✅
   - **Why First**: Proves Flow can build Flow - validates core concept
 
 ### Cycle Configuration
@@ -71,9 +71,10 @@
   - Files: `src/cycle/executor.rs` (CycleResult.exit_code and .success)
   - Completed: 2026-02-15
 
-- [ ] Extract outcome summary from Claude's response
-  - Status: Not Started
+- [x] Extract outcome summary from Claude's response
+  - Status: Completed (basic: exit-code-based success/failure for MVP)
   - Priority: P0
+  - Completed: 2026-02-15
 
 ### JSONL Logger
 - [x] Implement .flow/log.jsonl writer
@@ -105,33 +106,42 @@
   - Files: `src/cycle/rules.rs`
   - Completed: 2026-02-15
 
-- [ ] Trigger dependent cycles automatically
-  - Status: Not Started
+- [x] Trigger dependent cycles automatically
+  - Status: Completed
   - Priority: P0
-  - Description: Wire find_triggered_cycles into the CLI/executor to auto-run dependent cycles
+  - Description: Wired find_triggered_cycles into CLI main loop to auto-run dependent cycles
+  - Files: `src/main.rs`
+  - Completed: 2026-02-15
 
 ### CLI Interface
-- [ ] Implement `--cycle <name>` argument
-  - Status: Not Started
+- [x] Implement `--cycle <name>` argument
+  - Status: Completed
   - Priority: P0
   - Files: `src/main.rs`
+  - Completed: 2026-02-15
 
-- [ ] Fail-fast error handling
-  - Status: Not Started
+- [x] Fail-fast error handling
+  - Status: Completed
   - Priority: P0
+  - Files: `src/main.rs` (anyhow with context on all fallible operations)
+  - Completed: 2026-02-15
 
 - [ ] Pretty output formatting
   - Status: Not Started
   - Priority: P1
 
 ### Initial Cycles
-- [ ] Define coding cycle prompt in cycles.toml
-  - Status: Not Started
+- [x] Define coding cycle prompt in cycles.toml
+  - Status: Completed
   - Priority: P0
+  - Files: `cycles.toml`
+  - Completed: 2026-02-15
 
-- [ ] Define gardening cycle prompt in cycles.toml
-  - Status: Not Started
+- [x] Define gardening cycle prompt in cycles.toml
+  - Status: Completed
   - Priority: P0
+  - Files: `cycles.toml`
+  - Completed: 2026-02-15
 
 - [ ] Define review cycle prompt in cycles.toml
   - Status: Not Started
@@ -244,6 +254,30 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-15 - CLI Interface & Dogfooding Prerequisites
+
+**Completed:**
+- [x] Implement `--cycle <name>` CLI argument (clap derive)
+- [x] Fail-fast error handling (anyhow with context)
+- [x] Define coding cycle prompt in cycles.toml
+- [x] Define gardening cycle prompt in cycles.toml
+- [x] Wire auto-trigger of dependent cycles
+- [x] Basic outcome extraction (exit-code-based)
+- [x] JSONL logging integration in main loop
+
+**Implementation:**
+- Files: `src/main.rs`, `cycles.toml`
+- Tests: 4 new tests (build_outcome success/failure/signal, available_cycle_names)
+- Total: 62 tests passing (58 lib + 4 main)
+
+**Notes:**
+- All dogfooding prerequisites now complete
+- `flow --cycle coding` loads config, executes cycle, logs to JSONL, auto-triggers dependents
+- Gardening cycle auto-triggers after coding via `find_triggered_cycles`
+- Fail-fast on unknown cycles with helpful error messages listing available cycles
+- Iteration counter tracks position across primary + dependent cycles
+- Fixed pre-existing clippy warnings in JSONL logger tests and integration test
 
 ### 2026-02-14 - Cycle Config Parser
 

@@ -1,0 +1,59 @@
+# Flow Cycle Definitions
+#
+# Each cycle defines a prompt, permissions, and dependencies.
+# Permissions are additive: global + per-cycle.
+
+[global]
+permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Edit(./tests/**)", "Bash(cargo *)"]
+
+[[cycle]]
+name = "coding"
+description = "Pick a task from TODO.md, plan, implement with TDD, test, lint"
+prompt = """
+You are Flow's coding cycle. Follow the /coding-iteration skill workflow:
+
+1. Read AGENTS.md for project context, then TODO.md for available tasks
+2. Pick the highest priority pending P0 task
+3. Read the relevant architecture spec in plans/
+4. Implement with TDD (red-green-refactor):
+   a. Write a failing test first
+   b. Run the test to see it fail
+   c. Write minimal code to make it pass
+   d. Refactor while keeping tests green
+5. Run full verification: cargo test --lib && cargo clippy --lib && cargo fmt
+6. Update TODO.md: mark completed tasks, add new discoveries
+7. Commit your changes with a descriptive message
+
+Important:
+- Follow existing code patterns and conventions
+- Never skip tests (TDD is mandatory)
+- Zero clippy warnings required
+- Prefer editing existing files over creating new ones
+"""
+permissions = ["Write(./TODO.md)", "Write(./AGENTS.md)", "Bash(git *)"]
+after = []
+context = "summaries"
+
+[[cycle]]
+name = "gardening"
+description = "Dependency updates, refactoring, docs, dead code removal, test coverage"
+prompt = """
+You are Flow's gardening cycle. Your job is maintenance and improvement:
+
+1. Read AGENTS.md and TODO.md for context
+2. Check for outdated dependencies: cargo outdated (if available) or review Cargo.toml
+3. Look for dead code, unused imports, and unnecessary complexity
+4. Improve test coverage for under-tested modules
+5. Improve documentation where lacking
+6. Run refactorings that simplify the codebase
+7. Run full verification: cargo test --lib && cargo clippy --lib && cargo fmt
+8. Commit improvements with descriptive messages
+
+Important:
+- Don't break existing tests
+- Keep changes focused and incremental
+- Zero clippy warnings required
+"""
+permissions = ["Write(./Cargo.toml)", "Bash(git *)"]
+after = ["coding"]
+context = "none"

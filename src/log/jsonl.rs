@@ -192,8 +192,7 @@ mod tests {
 
         // Read the file and verify it has two lines
         let content = fs::read_to_string(logger.log_path()).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 2);
+        assert_eq!(content.lines().count(), 2);
     }
 
     #[test]
@@ -233,12 +232,12 @@ mod tests {
         logger.append(&outcome1).unwrap();
         logger.append(&outcome2).unwrap();
 
-        let outcomes = logger.read_all().unwrap();
-        assert_eq!(outcomes.len(), 2);
-        assert_eq!(outcomes[0].iteration, 1);
-        assert_eq!(outcomes[0].cycle, "coding");
-        assert_eq!(outcomes[1].iteration, 2);
-        assert_eq!(outcomes[1].cycle, "gardening");
+        let results = logger.read_all().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].iteration, 1);
+        assert_eq!(results[0].cycle, "coding");
+        assert_eq!(results[1].iteration, 2);
+        assert_eq!(results[1].cycle, "gardening");
     }
 
     #[test]

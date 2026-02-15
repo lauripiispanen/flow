@@ -59,12 +59,12 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger dependent cycles
 **In Progress**: Nothing
-**Next**: Outcome extraction | CLI Interface | Auto-trigger dependent cycles (see TODO.md)
+**Next**: First dogfood test (`flow --cycle coding`) | Integration tests | Pretty output (P1)
 
 **Test Status**:
-- ✅ 58 passing (pipeline + jsonl + config + permissions + cli + executor + rules)
+- ✅ 62 passing (58 lib + 4 main: pipeline + jsonl + config + permissions + cli + executor + rules + main)
 - ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
 
 **Component Status**:
@@ -76,8 +76,8 @@ Claude CLI Builder     | ✅ | src/claude/cli.rs (7 tests)
 Output Streamer        | ✅ | Built into executor (async line-by-line streaming)
 JSONL Logger          | ✅ | src/log/jsonl.rs (6 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
-CLI Interface         | ❌ | src/main.rs
-cycles.toml           | ❌ | cycles.toml
+CLI Interface         | ✅ | src/main.rs (clap --cycle, fail-fast, auto-trigger)
+cycles.toml           | ✅ | cycles.toml (coding + gardening cycles)
 ```
 
 ---
