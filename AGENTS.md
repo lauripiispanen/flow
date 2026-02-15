@@ -85,27 +85,35 @@ cycles.toml           | ❌ | cycles.toml
 
 ## Development Workflow
 
+**For Claude Code agents**: Use `/coding-iteration` skill at start of each iteration
+
 **TDD Process** (non-negotiable):
-1. **Red**: Write failing test first
-2. **Green**: Minimum code to pass
+1. **Red**: Write failing test first → Run test (see fail)
+2. **Green**: Minimum code to pass → Run test (see pass)
 3. **Refactor**: Clean up while tests stay green
 
 **Commands**:
 ```bash
 # Daily development
-cargo test-all && cargo clippy-all && cargo fmt
+cargo test --lib && cargo clippy --lib && cargo fmt
 
 # Verification before commit
-cargo test-all     # All tests pass
-cargo clippy-all   # Zero warnings
-cargo fmt          # Format code
+cargo test --lib     # Library tests pass
+cargo clippy --lib   # Zero warnings
+cargo fmt            # Format code
 
 # Aliases (defined in .cargo/config.toml)
 cargo check-all    # Check all targets
-cargo test-all     # Test all targets
+cargo test-all     # Test all targets (includes integration tests)
 cargo clippy-all   # Clippy with -D warnings
 cargo fmt-check    # Verify formatting
 ```
+
+**Pre-commit Hook**:
+- Automatically runs on `git commit`
+- Verifies: library tests pass, no clippy warnings, code formatted
+- Located at `.git/hooks/pre-commit`
+- Only checks library code until integration tests implemented
 
 **Code Standards**:
 - Linting: clippy (all|pedantic|nursery|cargo)
