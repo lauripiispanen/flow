@@ -83,6 +83,10 @@ async fn test_coding_cycle_end_to_end() {
         stdout,
         stderr,
         duration_secs,
+        result_text: None,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
 
     let outcome = CycleOutcome {
@@ -97,6 +101,9 @@ async fn test_coding_cycle_end_to_end() {
         files_changed: vec![],
         tests_passed: 0,
         duration_secs: result.duration_secs,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -141,6 +148,10 @@ async fn test_failed_cycle_logged_correctly() {
         stdout,
         stderr,
         duration_secs,
+        result_text: None,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
 
     let outcome = CycleOutcome {
@@ -156,6 +167,9 @@ async fn test_failed_cycle_logged_correctly() {
         files_changed: vec![],
         tests_passed: 0,
         duration_secs: result.duration_secs,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -194,6 +208,10 @@ async fn test_gardening_auto_triggers_after_coding() {
         stdout,
         stderr,
         duration_secs,
+        result_text: None,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
 
     // Log coding result
@@ -205,6 +223,9 @@ async fn test_gardening_auto_triggers_after_coding() {
         files_changed: vec![],
         tests_passed: 0,
         duration_secs: coding_result.duration_secs,
+        num_turns: None,
+        total_cost_usd: None,
+        permission_denial_count: None,
     };
     logger.append(&coding_outcome).unwrap();
     iteration += 1;
@@ -233,6 +254,10 @@ async fn test_gardening_auto_triggers_after_coding() {
             stdout,
             stderr,
             duration_secs,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let dep_outcome = CycleOutcome {
@@ -243,6 +268,9 @@ async fn test_gardening_auto_triggers_after_coding() {
             files_changed: vec![],
             tests_passed: 0,
             duration_secs: dep_result.duration_secs,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
         logger.append(&dep_outcome).unwrap();
         iteration += 1;
@@ -318,6 +346,10 @@ async fn test_multiple_iterations_logged() {
             stdout,
             stderr,
             duration_secs,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome = CycleOutcome {
@@ -328,6 +360,9 @@ async fn test_multiple_iterations_logged() {
             files_changed: vec![],
             tests_passed: 0,
             duration_secs: result.duration_secs,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
         logger.append(&outcome).unwrap();
     }

@@ -38,6 +38,14 @@ pub struct CycleResult {
     pub stderr: String,
     /// Duration of the cycle in seconds
     pub duration_secs: u64,
+    /// Human-readable result summary from Claude's response
+    pub result_text: Option<String>,
+    /// Number of conversation turns
+    pub num_turns: Option<u32>,
+    /// Total cost in USD
+    pub total_cost_usd: Option<f64>,
+    /// Number of permission denials during the cycle
+    pub permission_denial_count: Option<u32>,
 }
 
 /// Executes cycles by invoking Claude Code CLI
@@ -87,6 +95,10 @@ impl CycleExecutor {
             stdout,
             stderr,
             duration_secs,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         })
     }
 }
@@ -284,5 +296,45 @@ permissions = []
         let (_stdout, _stderr, _exit_code, duration) = run_command(cmd).await.unwrap();
         // Duration is in seconds, sleep 0.01 should round to 0
         assert!(duration < 5, "Expected fast execution, got {duration}s");
+    }
+
+    #[test]
+    fn test_cycle_result_optional_fields_default_to_none() {
+        let result = CycleResult {
+            cycle_name: "test".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            duration_secs: 0,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+        };
+        assert!(result.result_text.is_none());
+        assert!(result.num_turns.is_none());
+        assert!(result.total_cost_usd.is_none());
+        assert!(result.permission_denial_count.is_none());
+    }
+
+    #[test]
+    fn test_cycle_result_optional_fields_with_values() {
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            duration_secs: 120,
+            result_text: Some("Implemented feature X".to_string()),
+            num_turns: Some(53),
+            total_cost_usd: Some(2.15),
+            permission_denial_count: Some(3),
+        };
+        assert_eq!(result.result_text.as_deref(), Some("Implemented feature X"));
+        assert_eq!(result.num_turns, Some(53));
+        assert_eq!(result.total_cost_usd, Some(2.15));
+        assert_eq!(result.permission_denial_count, Some(3));
     }
 }

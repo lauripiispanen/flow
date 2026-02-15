@@ -10,7 +10,7 @@ use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 
 /// Represents the outcome of a single cycle execution
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CycleOutcome {
     /// The iteration number (1-indexed)
     pub iteration: u32,
@@ -26,6 +26,15 @@ pub struct CycleOutcome {
     pub tests_passed: u32,
     /// Duration of the cycle in seconds
     pub duration_secs: u64,
+    /// Number of conversation turns
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_turns: Option<u32>,
+    /// Total cost in USD
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_cost_usd: Option<f64>,
+    /// Number of permission denials during the cycle
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_denial_count: Option<u32>,
 }
 
 /// JSONL logger for cycle execution history
@@ -155,6 +164,9 @@ mod tests {
             files_changed: vec!["src/main.rs".to_string()],
             tests_passed: 3,
             duration_secs: 180,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -175,6 +187,9 @@ mod tests {
             files_changed: vec!["src/main.rs".to_string()],
             tests_passed: 3,
             duration_secs: 180,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -185,6 +200,9 @@ mod tests {
             files_changed: vec!["Cargo.toml".to_string()],
             tests_passed: 3,
             duration_secs: 45,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -217,6 +235,9 @@ mod tests {
             files_changed: vec!["src/main.rs".to_string()],
             tests_passed: 3,
             duration_secs: 180,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -227,6 +248,9 @@ mod tests {
             files_changed: vec!["Cargo.toml".to_string()],
             tests_passed: 3,
             duration_secs: 45,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -256,6 +280,9 @@ mod tests {
             ],
             tests_passed: 15,
             duration_secs: 300,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         logger.append(&original).unwrap();
@@ -271,5 +298,48 @@ mod tests {
         assert_eq!(recovered.tests_passed, original.tests_passed);
         assert_eq!(recovered.duration_secs, original.duration_secs);
         // Note: timestamp might have minor precision differences
+    }
+
+    #[test]
+    fn test_cycle_outcome_with_rich_fields() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        let outcome = CycleOutcome {
+            iteration: 1,
+            cycle: "coding".to_string(),
+            timestamp: Utc::now(),
+            outcome: "Implemented feature X with 5 new tests".to_string(),
+            files_changed: vec!["src/main.rs".to_string()],
+            tests_passed: 5,
+            duration_secs: 253,
+            num_turns: Some(53),
+            total_cost_usd: Some(2.15),
+            permission_denial_count: Some(3),
+        };
+
+        logger.append(&outcome).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].num_turns, Some(53));
+        assert_eq!(entries[0].total_cost_usd, Some(2.15));
+        assert_eq!(entries[0].permission_denial_count, Some(3));
+    }
+
+    #[test]
+    fn test_cycle_outcome_rich_fields_default_for_backward_compat() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        // Simulate old-format JSONL without the new fields
+        let old_json = r#"{"iteration":1,"cycle":"coding","timestamp":"2026-02-15T00:00:00Z","outcome":"done","files_changed":[],"tests_passed":0,"duration_secs":60}"#;
+        std::fs::write(logger.log_path(), format!("{old_json}\n")).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].num_turns, None);
+        assert_eq!(entries[0].total_cost_usd, None);
+        assert_eq!(entries[0].permission_denial_count, None);
     }
 }

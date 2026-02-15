@@ -43,14 +43,16 @@ fn format_exit_code(exit_code: Option<i32>) -> String {
 
 /// Build a `CycleOutcome` from a `CycleResult` for JSONL logging.
 fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
-    let outcome_text = if result.success {
-        "Completed successfully".to_string()
-    } else {
-        format!(
-            "Failed with exit code {}",
-            format_exit_code(result.exit_code)
-        )
-    };
+    let outcome_text = result.result_text.clone().unwrap_or_else(|| {
+        if result.success {
+            "Completed successfully".to_string()
+        } else {
+            format!(
+                "Failed with exit code {}",
+                format_exit_code(result.exit_code)
+            )
+        }
+    });
 
     CycleOutcome {
         iteration,
@@ -60,6 +62,9 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
         files_changed: vec![],
         tests_passed: 0,
         duration_secs: result.duration_secs,
+        num_turns: result.num_turns,
+        total_cost_usd: result.total_cost_usd,
+        permission_denial_count: result.permission_denial_count,
     }
 }
 
@@ -170,6 +175,10 @@ mod tests {
             stdout: "done".to_string(),
             stderr: String::new(),
             duration_secs: 120,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -189,6 +198,10 @@ mod tests {
             stdout: String::new(),
             stderr: "error".to_string(),
             duration_secs: 30,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome = build_outcome(&result, 3);
@@ -205,10 +218,36 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
             duration_secs: 5,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
         };
 
         let outcome = build_outcome(&result, 1);
         assert_eq!(outcome.outcome, "Failed with exit code unknown");
+    }
+
+    #[test]
+    fn test_build_outcome_uses_result_text_when_present() {
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            duration_secs: 120,
+            result_text: Some("Implemented feature X with 5 tests".to_string()),
+            num_turns: Some(53),
+            total_cost_usd: Some(2.15),
+            permission_denial_count: Some(3),
+        };
+
+        let outcome = build_outcome(&result, 1);
+        assert_eq!(outcome.outcome, "Implemented feature X with 5 tests");
+        assert_eq!(outcome.num_turns, Some(53));
+        assert_eq!(outcome.total_cost_usd, Some(2.15));
+        assert_eq!(outcome.permission_denial_count, Some(3));
     }
 
     #[test]
