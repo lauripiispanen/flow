@@ -47,10 +47,11 @@
   - Description: Reject malformed permission strings at config parse time (must match `ToolName` or `ToolName(specifier)` pattern). Implement when building CLI builder.
 
 ### Cycle Executor
-- [ ] Implement CycleExecutor struct
-  - Status: Not Started
+- [x] Implement CycleExecutor struct
+  - Status: Completed
   - Priority: P0
   - Files: `src/cycle/executor.rs`
+  - Completed: 2026-02-15
 
 - [x] Build Claude Code CLI command with --allowedTools flags
   - Status: Completed
@@ -58,14 +59,17 @@
   - Files: `src/claude/cli.rs`
   - Completed: 2026-02-15
 
-- [ ] Stream stdout/stderr to terminal (real-time)
-  - Status: Not Started
+- [x] Stream stdout/stderr to terminal (real-time)
+  - Status: Completed
   - Priority: P0
-  - Files: `src/observe/stream.rs`
+  - Files: `src/cycle/executor.rs` (built into executor via async line-by-line streaming)
+  - Completed: 2026-02-15
 
-- [ ] Capture exit code and detect failures
-  - Status: Not Started
+- [x] Capture exit code and detect failures
+  - Status: Completed
   - Priority: P0
+  - Files: `src/cycle/executor.rs` (CycleResult.exit_code and .success)
+  - Completed: 2026-02-15
 
 - [ ] Extract outcome summary from Claude's response
   - Status: Not Started
@@ -256,6 +260,26 @@
 - Multiline TOML prompts supported
 - `get_cycle()` lookup by name
 - `from_path()` for file-based loading
+
+### 2026-02-15 - Cycle Executor
+
+**Completed:**
+- [x] Implement CycleExecutor struct
+- [x] Stream stdout/stderr to terminal (real-time)
+- [x] Capture exit code and detect failures
+
+**Implementation:**
+- Files: `src/cycle/executor.rs`, `src/cycle/mod.rs`, `src/lib.rs`
+- Tests: 12 comprehensive tests passing (6 prepare + 6 run_command)
+- Coverage: `CycleExecutor` with `prepare()` and `execute()`, `PreparedCycle`, `CycleResult`, `run_command()` async subprocess runner
+
+**Notes:**
+- `prepare()` validates cycle exists and resolves permissions (testable without subprocess)
+- `run_command()` async function handles subprocess execution with tokio
+- Concurrent stdout/stderr reading with real-time terminal forwarding
+- Line-by-line streaming via `tokio::io::BufReader`
+- Duration tracking with `std::time::Instant`
+- Re-exported `CycleExecutor`, `CycleResult`, `PreparedCycle` from `lib.rs`
 
 ### 2026-02-15 - Claude CLI Builder
 
