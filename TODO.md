@@ -40,6 +40,12 @@
   - Priority: P0
   - Completed: 2026-02-14
 
+- [ ] Validate permission strings match `--allowedTools` syntax
+  - Status: Not Started
+  - Priority: P1
+  - Files: `src/cycle/config.rs`
+  - Description: Reject malformed permission strings at config parse time (must match `ToolName` or `ToolName(specifier)` pattern). Implement when building CLI builder.
+
 ### Cycle Executor
 - [ ] Implement CycleExecutor struct
   - Status: Not Started
@@ -136,10 +142,11 @@
   - Status: Not Started
   - Priority: P0
 
-- [ ] Test: Permission resolution (additive)
-  - Status: Not Started
+- [x] Test: Permission resolution (additive)
+  - Status: Completed
   - Priority: P0
-  - Files: `tests/permissions_test.rs`
+  - Files: `src/claude/permissions.rs` (7 unit tests)
+  - Completed: 2026-02-15
 
 - [x] Test: JSONL logging works correctly
   - Status: Completed

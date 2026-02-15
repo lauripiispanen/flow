@@ -168,6 +168,9 @@ Done (or continue to next iteration)
 
 ### 1. Cycle Configuration (`cycles.toml`)
 
+> **Source of truth for permission syntax**: [Claude Code Permissions Docs](https://code.claude.com/docs/en/permissions)
+> Permissions use the native `--allowedTools` format: `ToolName` or `ToolName(specifier)` with glob patterns.
+
 ```toml
 # Global defaults
 [global]

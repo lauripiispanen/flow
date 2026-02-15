@@ -129,11 +129,12 @@ Potential improvements:
 **Low Priority / Future:**
 1.
 
-### Decision: Implement Now or Later?
+### Action Item Disposition (ALL items must be addressed)
 
-- [ ] Implement high-priority items now
-- [ ] Document for later
-- [ ] All good, proceed to next iteration
+| # | Item | Disposition | Artifact |
+|---|------|-------------|----------|
+| 1 | ... | Implemented / Added to TODO.md / Added to AGENTS.md | link or file |
+| 2 | ... | ... | ... |
 ```
 
 ## When to Reflect
@@ -150,25 +151,27 @@ Potential improvements:
 - Middle of a flow (wait until component done)
 - When explicitly told to skip it
 
-## Acting on Reflections
+## Acting on Reflections (MANDATORY)
+
+**Action items are not optional.** After reflection, you MUST execute them before moving on. Reflection without follow-through is waste.
 
 After identifying action items:
 
-1. **Categorize by urgency:**
-   - Blocking → Fix immediately (can't proceed without it)
-   - High → Fix before next iteration
-   - Medium → Fix when convenient
-   - Low → Document for future
+1. **Implement immediately by default:**
+   - High priority → Do it now, before the next coding iteration
+   - Medium priority → Do it now if small effort, otherwise add to TODO.md with full context
+   - Low priority → Add to TODO.md with full context
+   - **Every action item must result in either a code change or a TODO.md entry — no items left hanging**
 
-2. **Get user buy-in:**
-   - Present findings concisely
-   - Propose concrete fixes
-   - Ask: "Should I implement these now or proceed?"
+2. **For each action item, do one of:**
+   - **Implement**: Make the change (update docs, add validation, fix the process)
+   - **Document in TODO.md**: Add as a tracked task with priority, description, and context
+   - **Add to AGENTS.md**: If it's a process/anti-pattern lesson, add it to the anti-patterns section
+   - Never just "note it" without a concrete artifact
 
-3. **Implement or document:**
-   - If implementing: Follow /coding-iteration workflow
-   - If deferring: Add to TODO.md with context
-   - If skipping: Document why (may not be needed)
+3. **Verify completeness:**
+   - Before ending the reflection, review every action item and confirm it was either implemented or tracked
+   - If an action item was skipped, explain why explicitly
 
 ## Meta-Improvement
 
@@ -219,4 +222,4 @@ This skill itself should improve over time:
 
 ---
 
-**Remember:** Good reflection leads to continuous improvement. Bad reflection is just complaining. Always provide concrete, actionable next steps.
+**Remember:** Reflection without action is waste. Every action item must produce an artifact: a code change, a TODO.md entry, or an AGENTS.md update. If you finish reflecting and haven't changed any files, you skipped the most important part.
