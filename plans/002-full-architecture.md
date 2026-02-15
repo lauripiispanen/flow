@@ -65,7 +65,7 @@ Load cycles.toml config
 Resolve permissions (global + cycle-specific, additive)
   ↓
 Execute cycle:
-  - Construct Claude Code CLI command with -p flags
+  - Construct Claude Code CLI command with --allowedTools flags
   - Stream output to terminal (real-time observability)
   - Update .flow/progress.json
   ↓
@@ -171,7 +171,7 @@ Done (or continue to next iteration)
 ```toml
 # Global defaults
 [global]
-permissions = ["read:*", "write:src/**", "bash:cargo"]
+permissions = ["Read", "Edit(./src/**)", "Bash(cargo *)"]
 
 # Coding Cycle
 [[cycle]]
@@ -186,7 +186,7 @@ You are Flow's coding cycle. Your job:
 5. Run cargo fmt and cargo clippy
 6. Summarize what you accomplished
 """
-permissions = ["write:tests/**", "bash:cargo test"]
+permissions = ["Edit(./tests/**)", "Bash(cargo test *)"]
 after = [] # Runs after these cycles complete
 context = "summaries" # full | summaries | none
 
@@ -203,7 +203,7 @@ You are Flow's gardening cycle. Your job:
 5. Improve test coverage
 6. Summarize improvements
 """
-permissions = ["write:Cargo.toml", "bash:cargo update"]
+permissions = ["Edit(./Cargo.toml)", "Bash(cargo update *)"]
 after = ["coding"] # Auto-run after coding cycle
 context = "none"
 
@@ -235,7 +235,7 @@ You are Flow's planning cycle. Your job:
 4. Update TODO.md with new priorities
 5. Summarize the plan
 """
-permissions = ["write:TODO.md", "write:plans/**"]
+permissions = ["Edit(./TODO.md)", "Edit(./plans/**)"]
 after = []
 context = "summaries"
 ```
@@ -313,7 +313,7 @@ Output JSON: {"cycle": "review", "reason": "Haven't reviewed recently, good time
 
 2. **Cycle Executor**
    - [ ] Implement `CycleExecutor` struct
-   - [ ] Build Claude Code CLI command with `-p` flags
+   - [ ] Build Claude Code CLI command with `--allowedTools` flags
    - [ ] Stream stdout/stderr to terminal (real-time)
    - [ ] Capture exit code and detect failures
    - [ ] Extract outcome summary from Claude's response

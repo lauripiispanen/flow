@@ -41,7 +41,7 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 **Components** → Files:
 - Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML
 - Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle)
-- Executor → `src/cycle/executor.rs` | Build claude-code CLI command with -p flags
+- Executor → `src/cycle/executor.rs` | Build claude-code CLI command with --allowedTools flags
 - CLI builder → `src/claude/cli.rs` | Construct subprocess invocation
 - Streaming → `src/observe/stream.rs` | Real-time stdout/stderr to terminal
 - JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl
@@ -59,18 +59,18 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver
 **In Progress**: Nothing
-**Next**: Permission Resolver or Claude CLI Builder (see TODO.md)
+**Next**: Claude CLI Builder or Cycle Executor (see TODO.md)
 
 **Test Status**:
-- ✅ 24 passing (pipeline + jsonl + config)
+- ✅ 31 passing (pipeline + jsonl + config + permissions)
 - ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
 
 **Component Status**:
 ```
 Cycle Config Parser    | ✅ | src/cycle/config.rs (17 tests)
-Permission Resolver    | ❌ | src/claude/permissions.rs
+Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ❌ | src/cycle/executor.rs
 Claude CLI Builder     | ❌ | src/claude/cli.rs
 Output Streamer        | ❌ | src/observe/stream.rs
@@ -124,12 +124,12 @@ cargo fmt-check    # Verify formatting
 
 ## Cycle Types (Defined in cycles.toml)
 
-**Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: read:*|write:src/**|write:tests/**|bash:cargo*
-**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: read:*|write:Cargo.toml|bash:cargo update | Triggers: after=[coding]
-**Review**: Code review|security|docs check | Perms: read:* (read-only)
-**Planning**: Analyze TODO|create plans|prioritize | Perms: read:*|write:TODO.md|write:plans/**
+**Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: Read|Edit(./src/**)|Edit(./tests/**)|Bash(cargo *)
+**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding]
+**Review**: Code review|security|docs check | Perms: Read (read-only)
+**Planning**: Analyze TODO|create plans|prioritize | Perms: Read|Edit(./TODO.md)|Edit(./plans/**)
 
-**Permission Model**: Hierarchical additive (global + per-cycle, only adds never removes)
+**Permission Model**: Hierarchical additive (global + per-cycle, only adds never removes). Uses native Claude Code `--allowedTools` syntax (e.g., `Read`, `Edit(./src/**)`, `Bash(cargo *)`)
 
 ---
 

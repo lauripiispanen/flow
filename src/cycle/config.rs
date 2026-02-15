@@ -124,13 +124,13 @@ mod tests {
 
     const VALID_CONFIG: &str = r#"
 [global]
-permissions = ["read:*", "write:src/**", "bash:cargo"]
+permissions = ["Read", "Edit(./src/**)", "Bash(cargo *)"]
 
 [[cycle]]
 name = "coding"
 description = "Pick a task and implement with TDD"
 prompt = "You are Flow's coding cycle."
-permissions = ["write:tests/**", "bash:cargo test"]
+permissions = ["Edit(./tests/**)", "Bash(cargo test *)"]
 after = []
 context = "summaries"
 
@@ -138,7 +138,7 @@ context = "summaries"
 name = "gardening"
 description = "Deps, refactoring, docs"
 prompt = "You are Flow's gardening cycle."
-permissions = ["write:Cargo.toml", "bash:cargo update"]
+permissions = ["Edit(./Cargo.toml)", "Bash(cargo update *)"]
 after = ["coding"]
 context = "none"
 "#;
@@ -148,7 +148,7 @@ context = "none"
         let config = FlowConfig::parse(VALID_CONFIG).unwrap();
 
         assert_eq!(config.global.permissions.len(), 3);
-        assert_eq!(config.global.permissions[0], "read:*");
+        assert_eq!(config.global.permissions[0], "Read");
         assert_eq!(config.cycles.len(), 2);
     }
 
@@ -162,7 +162,7 @@ context = "none"
         assert_eq!(coding.prompt, "You are Flow's coding cycle.");
         assert_eq!(
             coding.permissions,
-            vec!["write:tests/**", "bash:cargo test"]
+            vec!["Edit(./tests/**)", "Bash(cargo test *)"]
         );
         assert!(coding.after.is_empty());
         assert_eq!(coding.context, ContextMode::Summaries);
@@ -377,7 +377,7 @@ Line three.
         let config = FlowConfig::parse(VALID_CONFIG).unwrap();
         assert_eq!(
             config.global.permissions,
-            vec!["read:*", "write:src/**", "bash:cargo"]
+            vec!["Read", "Edit(./src/**)", "Bash(cargo *)"]
         );
     }
 }

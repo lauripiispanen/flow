@@ -29,10 +29,11 @@
   - Dependencies: cycles.toml schema
   - Completed: 2026-02-14
 
-- [ ] Implement permission resolver (global + per-cycle, additive)
-  - Status: Not Started
+- [x] Implement permission resolver (global + per-cycle, additive)
+  - Status: Completed
   - Priority: P0
   - Files: `src/claude/permissions.rs`
+  - Completed: 2026-02-14
 
 - [x] Validate cycle configuration on load
   - Status: Completed
@@ -45,7 +46,7 @@
   - Priority: P0
   - Files: `src/cycle/executor.rs`
 
-- [ ] Build Claude Code CLI command with -p flags
+- [ ] Build Claude Code CLI command with --allowedTools flags
   - Status: Not Started
   - Priority: P0
   - Files: `src/claude/cli.rs`

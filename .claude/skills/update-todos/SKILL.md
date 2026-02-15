@@ -181,7 +181,7 @@ If you only completed part of a larger task:
   - Priority: P0
   - Completed: 2026-02-14
 
-- [ ] Build Claude Code CLI command with -p flags
+- [ ] Build Claude Code CLI command with --allowedTools flags
   - Status: In Progress
   - Priority: P0
   - Started: 2026-02-14
