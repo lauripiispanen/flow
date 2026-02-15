@@ -30,7 +30,7 @@ Important:
 - Zero clippy warnings required
 - Prefer editing existing files over creating new ones
 """
-permissions = ["Write(./TODO.md)", "Write(./AGENTS.md)", "Bash(git *)"]
+permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
 after = []
 context = "summaries"
 
@@ -54,6 +54,6 @@ Important:
 - Keep changes focused and incremental
 - Zero clippy warnings required
 """
-permissions = ["Write(./Cargo.toml)", "Bash(git *)"]
+permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
 after = ["coding"]
 context = "none"

@@ -158,6 +158,8 @@ after = ["coding", "testing"]
         let config = FlowConfig {
             global: GlobalConfig {
                 permissions: vec![],
+                max_permission_denials: 10,
+                circuit_breaker_repeated: 5,
             },
             cycles: vec![],
         };

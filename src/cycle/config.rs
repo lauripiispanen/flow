@@ -26,6 +26,20 @@ pub struct GlobalConfig {
     /// Permissions applied to all cycles
     #[serde(default)]
     pub permissions: Vec<String>,
+    /// Max permission denials before stopping between cycles (default: 10)
+    #[serde(default = "default_max_permission_denials")]
+    pub max_permission_denials: u32,
+    /// Kill subprocess if same tool denied N times in a row (default: 5)
+    #[serde(default = "default_circuit_breaker_repeated")]
+    pub circuit_breaker_repeated: u32,
+}
+
+const fn default_max_permission_denials() -> u32 {
+    10
+}
+
+const fn default_circuit_breaker_repeated() -> u32 {
+    5
 }
 
 /// A single cycle definition
@@ -371,6 +385,40 @@ Line three.
         let coding = config.get_cycle("coding").unwrap();
         assert!(coding.prompt.contains("Line one."));
         assert!(coding.prompt.contains("Line three."));
+    }
+
+    #[test]
+    fn test_global_safeguard_defaults() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.max_permission_denials, 10);
+        assert_eq!(config.global.circuit_breaker_repeated, 5);
+    }
+
+    #[test]
+    fn test_global_safeguard_custom_values() {
+        let toml = r#"
+[global]
+permissions = []
+max_permission_denials = 20
+circuit_breaker_repeated = 3
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.max_permission_denials, 20);
+        assert_eq!(config.global.circuit_breaker_repeated, 3);
     }
 
     #[test]
