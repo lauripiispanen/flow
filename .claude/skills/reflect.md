@@ -1,3 +1,8 @@
+---
+name: reflect
+description: Reflect on a completed coding iteration to identify improvements
+---
+
 # Iteration Reflection Skill
 
 Use this skill at the END of each coding iteration to reflect on what happened and identify improvements.

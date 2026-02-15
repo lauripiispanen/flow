@@ -1,3 +1,8 @@
+---
+name: coding-iteration
+description: Execute TDD workflow with RED/GREEN/REFACTOR phases and quality verification
+---
+
 # Coding Iteration Skill
 
 Use this skill at the start of each coding iteration to follow the proper TDD workflow and quality standards.

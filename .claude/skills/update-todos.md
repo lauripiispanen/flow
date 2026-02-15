@@ -1,3 +1,8 @@
+---
+name: update-todos
+description: Keep TODO.md synchronized with completed work before committing
+---
+
 # Update TODOs Skill
 
 Use this skill to keep TODO.md synchronized with completed work. Run this BEFORE committing code.
