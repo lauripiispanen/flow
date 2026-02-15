@@ -8,13 +8,14 @@ use std::process::Command;
 /// Build a `Command` to invoke Claude Code with the given prompt and permissions.
 ///
 /// The command uses `-p` for non-interactive prompt execution,
-/// `--output-format stream-json` for structured streaming output,
+/// `--verbose` and `--output-format stream-json` for structured streaming output,
 /// and `--allowedTools` for each resolved permission string.
 #[must_use]
 pub fn build_command(prompt: &str, permissions: &[String]) -> Command {
     let mut cmd = Command::new("claude");
 
     cmd.arg("-p").arg(prompt);
+    cmd.arg("--verbose");
     cmd.arg("--output-format").arg("stream-json");
 
     if !permissions.is_empty() {
@@ -122,6 +123,17 @@ mod tests {
         assert!(
             args.contains(&"stream-json"),
             "Expected stream-json output format, got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn test_build_includes_verbose_flag() {
+        let cmd = super::build_command("Code", &[]);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+
+        assert!(
+            args.contains(&"--verbose"),
+            "Expected --verbose flag (required for stream-json with -p), got: {args:?}"
         );
     }
 }

@@ -95,7 +95,9 @@ impl CycleExecutor {
 ///
 /// Spawns the process with piped stdout/stderr, reads them concurrently,
 /// forwards each line to the terminal, and returns the captured output.
-async fn run_command(cmd: std::process::Command) -> Result<(String, String, Option<i32>, u64)> {
+///
+/// Returns `(stdout, stderr, exit_code, duration_secs)`.
+pub async fn run_command(cmd: std::process::Command) -> Result<(String, String, Option<i32>, u64)> {
     let mut tokio_cmd = TokioCommand::from(cmd);
     tokio_cmd.stdout(Stdio::piped());
     tokio_cmd.stderr(Stdio::piped());
