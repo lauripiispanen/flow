@@ -36,6 +36,11 @@ struct Cli {
     log_dir: PathBuf,
 }
 
+/// Format an exit code for display, returning "unknown" if the process was killed by signal.
+fn format_exit_code(exit_code: Option<i32>) -> String {
+    exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string())
+}
+
 /// Build a `CycleOutcome` from a `CycleResult` for JSONL logging.
 fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
     let outcome_text = if result.success {
@@ -43,9 +48,7 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
     } else {
         format!(
             "Failed with exit code {}",
-            result
-                .exit_code
-                .map_or_else(|| "unknown".to_string(), |c| c.to_string())
+            format_exit_code(result.exit_code)
         )
     };
 
@@ -87,9 +90,7 @@ async fn execute_and_log(
     } else {
         eprintln!(
             "--- Cycle '{cycle_name}' failed (exit code: {}) ---",
-            result
-                .exit_code
-                .map_or_else(|| "unknown".to_string(), |c| c.to_string())
+            format_exit_code(result.exit_code)
         );
     }
 

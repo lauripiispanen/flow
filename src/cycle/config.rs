@@ -2,9 +2,11 @@
 //!
 //! Parses `cycles.toml` into structured cycle definitions.
 
+use std::collections::HashSet;
+use std::path::Path;
+
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 /// Context mode for a cycle - controls how much history is provided
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,7 +87,7 @@ impl FlowConfig {
     /// Validate the configuration
     fn validate(&self) -> Result<()> {
         // Check for duplicate cycle names
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         for cycle in &self.cycles {
             if !seen.insert(&cycle.name) {
                 bail!("Duplicate cycle name: '{}'", cycle.name);
@@ -93,8 +95,7 @@ impl FlowConfig {
         }
 
         // Check that `after` references exist
-        let names: std::collections::HashSet<&str> =
-            self.cycles.iter().map(|c| c.name.as_str()).collect();
+        let names: HashSet<&str> = self.cycles.iter().map(|c| c.name.as_str()).collect();
         for cycle in &self.cycles {
             for dep in &cycle.after {
                 if !names.contains(dep.as_str()) {

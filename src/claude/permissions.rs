@@ -3,6 +3,8 @@
 //! Merges global and per-cycle permissions using an additive model:
 //! the resolved set is the union of global + cycle-specific permissions.
 
+use std::collections::HashSet;
+
 use crate::cycle::config::{CycleConfig, GlobalConfig};
 
 /// Resolve the effective permissions for a cycle by merging global and
@@ -10,7 +12,7 @@ use crate::cycle::config::{CycleConfig, GlobalConfig};
 /// permissions first, followed by any cycle-specific additions.
 #[must_use]
 pub fn resolve_permissions(global: &GlobalConfig, cycle: &CycleConfig) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     let mut result = Vec::new();
 
     for perm in &global.permissions {

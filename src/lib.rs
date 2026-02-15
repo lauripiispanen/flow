@@ -9,7 +9,6 @@
 pub mod claude;
 pub mod cycle;
 pub mod log;
-pub mod pipeline;
 
 // Re-export commonly used types
 pub use claude::cli::build_command;
@@ -18,4 +17,3 @@ pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig};
 pub use cycle::executor::{CycleExecutor, CycleResult, PreparedCycle};
 pub use cycle::rules::find_triggered_cycles;
 pub use log::{CycleOutcome, JsonlLogger};
-pub use pipeline::{Pipeline, PipelineResult};
