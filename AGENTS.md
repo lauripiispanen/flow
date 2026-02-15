@@ -148,6 +148,8 @@ cargo fmt-check    # Verify formatting
 ❌ Skip tests (TDD is mandatory) | ❌ Implement without reading plan | ❌ Premature optimization (build for P1 not P3)
 ❌ Bypass linters (fix warnings, don't suppress) | ❌ Subtractive permissions (only additive)
 ❌ Hardcode paths (use relative paths) | ❌ Block dogfooding (ship P1 fast to learn)
+❌ Assert on external crate error messages (fragile — assert `is_err()` or match only your own messages)
+❌ Use agent memory files for project knowledge (all guidance must be explicit in version-controlled project files)
 
 ---
 

@@ -109,11 +109,11 @@ cargo clippy --lib -- -D warnings
 
 ❌ **Don't**:
 - Write implementation before tests
-- Write tests and implementation simultaneously
 - Skip running tests to see them fail first
 - Commit without running full verification
 - Use `git add .` or `git add -A` (be explicit)
 - Write too many tests before implementing (small iterations)
+- Assert on error message substrings from external crates (fragile — use `is_err()` or match only your own messages)
 
 ✅ **Do**:
 - Write one test at a time
@@ -122,6 +122,11 @@ cargo clippy --lib -- -D warnings
 - Run tests frequently
 - Keep refactoring steps small
 - Commit working, tested code
+
+### TDD for Data Structures vs Behavior
+
+- **Serde-derived structs**: Types and tests are tightly coupled. Co-developing types + tests is pragmatic — you can't write a meaningful failing test without the type existing.
+- **Behavioral/algorithmic components** (executor, rules engine, permissions): Use strict RED→GREEN→REFACTOR. Write a failing test that describes desired behavior, then implement to make it pass.
 
 ## Example Workflow
 
