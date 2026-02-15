@@ -6,6 +6,16 @@
 
 **Goal**: Execute named cycles manually with basic observability
 
+### 🌱 Meta: First Dogfooding Milestone
+
+- [ ] Use Flow to run `/coding-iteration` as a cycle
+  - Status: Not Started
+  - Priority: P0 (Validates entire system)
+  - Description: Create a "coding" cycle in cycles.toml that invokes /coding-iteration skill
+  - Success: Flow successfully executes `flow --cycle coding`, completes a task, logs to JSONL
+  - Dependencies: cycles.toml, config parser, executor, JSONL logger ✅, CLI
+  - **Why First**: Proves Flow can build Flow - validates core concept
+
 ### Cycle Configuration
 - [ ] [Define cycles.toml schema](./plans/002-full-architecture.md#1-cycle-configuration-cyclestoml)
   - Status: Not Started
@@ -133,14 +143,22 @@
   - Completed: 2026-02-14
 
 ### 🌱 Dogfooding Milestone
-- [ ] Use Flow to implement next feature
+- [ ] First dogfood: Run `/coding-iteration` as a cycle
+  - Status: Not Started
+  - Priority: P0
+  - Description: See "Meta: First Dogfooding Milestone" at top of Phase 1
+  - Success: `flow --cycle coding` completes one task end-to-end
+
+- [ ] Second dogfood: Use Flow to implement next feature
   - Status: Not Started
   - Priority: P0
   - Description: Once basic MVP works, use `flow --cycle coding` to build Phase 2 features
+  - Dependencies: First dogfood complete
 
 - [ ] Document learnings and iterate
   - Status: Not Started
   - Priority: P0
+  - Description: After dogfooding, update cycles, prompts, permissions based on what worked/didn't
 
 ---
 
