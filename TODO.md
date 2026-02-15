@@ -52,10 +52,11 @@
   - Priority: P0
   - Files: `src/cycle/executor.rs`
 
-- [ ] Build Claude Code CLI command with --allowedTools flags
-  - Status: Not Started
+- [x] Build Claude Code CLI command with --allowedTools flags
+  - Status: Completed
   - Priority: P0
   - Files: `src/claude/cli.rs`
+  - Completed: 2026-02-15
 
 - [ ] Stream stdout/stderr to terminal (real-time)
   - Status: Not Started
@@ -255,6 +256,23 @@
 - Multiline TOML prompts supported
 - `get_cycle()` lookup by name
 - `from_path()` for file-based loading
+
+### 2026-02-15 - Claude CLI Builder
+
+**Completed:**
+- [x] Build Claude Code CLI command with --allowedTools flags
+
+**Implementation:**
+- Files: `src/claude/cli.rs`, `src/claude/mod.rs`, `src/lib.rs`
+- Tests: 7 comprehensive tests passing
+- Coverage: `build_command()` function — constructs `std::process::Command` with `-p`, `--output-format stream-json`, and `--allowedTools` flags
+
+**Notes:**
+- Verified actual Claude Code CLI flags via documentation before implementing
+- Each permission passed as separate arg after `--allowedTools`
+- `--allowedTools` omitted when no permissions provided
+- `--output-format stream-json` for structured streaming output
+- Re-exported `build_command` from `lib.rs`
 
 ### 2026-02-14 - JSONL Logger
 

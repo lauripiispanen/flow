@@ -12,6 +12,7 @@ pub mod log;
 pub mod pipeline;
 
 // Re-export commonly used types
+pub use claude::cli::build_command;
 pub use claude::permissions::resolve_permissions;
 pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig};
 pub use log::{CycleOutcome, JsonlLogger};
