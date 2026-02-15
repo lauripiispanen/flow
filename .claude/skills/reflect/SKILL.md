@@ -151,27 +151,18 @@ Potential improvements:
 - Middle of a flow (wait until component done)
 - When explicitly told to skip it
 
-## Acting on Reflections (MANDATORY)
+## Acting on Reflections
 
-**Action items are not optional.** After reflection, you MUST execute them before moving on. Reflection without follow-through is waste.
+Not every reflection produces action items — sometimes things went well and there's nothing to change. That's fine.
 
-After identifying action items:
+**But if action items arise, they must be dealt with immediately.** Don't list them and move on.
 
-1. **Implement immediately by default:**
-   - High priority → Do it now, before the next coding iteration
-   - Medium priority → Do it now if small effort, otherwise add to TODO.md with full context
-   - Low priority → Add to TODO.md with full context
-   - **Every action item must result in either a code change or a TODO.md entry — no items left hanging**
+For each action item, do one of:
+- **Implement now**: Make the change (update docs, add validation, fix the process)
+- **Track in TODO.md**: Add as a task with priority, description, and context
+- **Add to AGENTS.md**: If it's a process/anti-pattern lesson
 
-2. **For each action item, do one of:**
-   - **Implement**: Make the change (update docs, add validation, fix the process)
-   - **Document in TODO.md**: Add as a tracked task with priority, description, and context
-   - **Add to AGENTS.md**: If it's a process/anti-pattern lesson, add it to the anti-patterns section
-   - Never just "note it" without a concrete artifact
-
-3. **Verify completeness:**
-   - Before ending the reflection, review every action item and confirm it was either implemented or tracked
-   - If an action item was skipped, explain why explicitly
+**No action item should be left unaddressed.** Before ending the reflection, verify every item was either implemented or tracked in a file.
 
 ## Meta-Improvement
 
@@ -222,4 +213,4 @@ This skill itself should improve over time:
 
 ---
 
-**Remember:** Reflection without action is waste. Every action item must produce an artifact: a code change, a TODO.md entry, or an AGENTS.md update. If you finish reflecting and haven't changed any files, you skipped the most important part.
+**Remember:** A clean reflection with no action items is a sign things are going well. But if problems surface, deal with them — don't just list them.
