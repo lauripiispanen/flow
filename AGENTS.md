@@ -59,25 +59,30 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger dependent cycles
-**In Progress**: Nothing
-**Next**: First dogfood test (`flow --cycle coding`) | Integration tests | Pretty output (P1)
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests
+**In Progress**: Post-dogfood improvements (stream-JSON parser, rich CLI display, runtime safeguards)
+**Next**: Fix cycles.toml permissions → Stream-JSON parser → Rich display → Safeguards (see TODO.md)
+
+**Plan**: [Post-dogfood improvements](../.claude/plans/wiggly-wandering-corbato.md)
 
 **Test Status**:
-- ✅ 62 passing (58 lib + 4 main: pipeline + jsonl + config + permissions + cli + executor + rules + main)
-- ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
+- ✅ 68 passing (58 lib + 4 main + 6 integration)
 
 **Component Status**:
 ```
 Cycle Config Parser    | ✅ | src/cycle/config.rs (17 tests)
 Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ✅ | src/cycle/executor.rs (12 tests)
-Claude CLI Builder     | ✅ | src/claude/cli.rs (7 tests)
+Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
 Output Streamer        | ✅ | Built into executor (async line-by-line streaming)
 JSONL Logger          | ✅ | src/log/jsonl.rs (6 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
 CLI Interface         | ✅ | src/main.rs (clap --cycle, fail-fast, auto-trigger)
 cycles.toml           | ✅ | cycles.toml (coding + gardening cycles)
+Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
+Stream-JSON Parser    | ❌ | src/claude/stream.rs (planned)
+Rich CLI Display      | ❌ | src/cli/display.rs (planned)
+Runtime Safeguards    | ❌ | config thresholds + circuit breaker (planned)
 ```
 
 ---

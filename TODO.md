@@ -8,13 +8,73 @@
 
 ### 🌱 Meta: First Dogfooding Milestone
 
-- [ ] Use Flow to run `/coding-iteration` as a cycle
-  - Status: Ready to Test (all prerequisites complete)
+- [x] Use Flow to run `/coding-iteration` as a cycle
+  - Status: Completed
   - Priority: P0 (Validates entire system)
   - Description: Create a "coding" cycle in cycles.toml that invokes /coding-iteration skill
   - Success: Flow successfully executes `flow --cycle coding`, completes a task, logs to JSONL
   - Dependencies: cycles.toml ✅, config parser ✅, executor ✅, JSONL logger ✅, CLI ✅
-  - **Why First**: Proves Flow can build Flow - validates core concept
+  - Completed: 2026-02-15
+  - **Result**: First dogfood succeeded — coding cycle wrote 6 integration tests, gardening cycle cleaned up dead pipeline module. Two commits, 68 tests passing.
+
+### 🔧 Post-Dogfood: CLI Output & Runtime Safeguards
+
+> Plan: [wiggly-wandering-corbato.md](../.claude/plans/wiggly-wandering-corbato.md)
+> Discovered during first dogfood: raw JSON output, permission issues invisible, result data discarded.
+
+- [ ] Fix cycles.toml permission strings (Write → Edit)
+  - Status: Not Started
+  - Priority: P0
+  - Files: `cycles.toml`
+  - Description: Change `Write(./TODO.md)` → `Edit(./TODO.md)`, `Write(./AGENTS.md)` → `Edit(./AGENTS.md)`, `Write(./Cargo.toml)` → `Edit(./Cargo.toml)`. Write is for new files, Edit is for modifying existing files.
+
+- [ ] Implement stream-JSON parser
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/claude/stream.rs` (new), `src/claude/mod.rs`
+  - Description: Parse Claude Code's `--output-format stream-json` stdout into structured `StreamEvent` variants (SystemInit, AssistantText, ToolUse, ToolResult, Result, Unknown). Include `suggest_permission_fix()` to map denied tools to permission strings for cycles.toml. ~15 tests.
+
+- [ ] Implement rich CLI display
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/cli/display.rs` (new), `src/cli/mod.rs` (new), `Cargo.toml` (add `colored`)
+  - Description: Replace raw JSON output with human-readable terminal display. Show cycle header, assistant text, tool use summaries (one-line), tool errors highlighted, and post-cycle summary with result text, turns, cost, duration, permission denials. All output to stderr.
+
+- [ ] Extend CycleOutcome with result blob data
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/log/jsonl.rs`
+  - Description: Add `num_turns`, `total_cost_usd`, `permission_denial_count` fields with `#[serde(default)]` for backward compat. Store actual result summary text instead of generic "Completed successfully". Remove `Eq` derive (f64).
+
+- [ ] Extend CycleResult with parsed stream-json fields
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/cycle/executor.rs`
+  - Description: Add `result_text: Option<String>`, `num_turns: Option<u32>`, `total_cost_usd: Option<f64>`, `permission_denial_count: Option<u32>` to CycleResult. All Option so mock tests pass None.
+
+- [ ] Implement execute_with_display() in CycleExecutor
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/cycle/executor.rs`
+  - Description: New method parallel to execute(). Integrates stream-JSON parsing + CycleDisplay for real-time human-readable output. Includes mid-cycle circuit breaker (kill subprocess if same tool denied N times in a row). Old execute() and run_command() unchanged for test compat.
+
+- [ ] Wire new execution path in main.rs
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/main.rs`
+  - Description: Switch execute_and_log() to use execute_with_display(). Update build_outcome() to populate rich fields from parsed result. Implement between-cycle gate (stop auto-triggering dependents if permission_denial_count > threshold). Print actionable permission fix suggestions.
+
+- [ ] Add safeguard thresholds to GlobalConfig
+  - Status: Not Started
+  - Priority: P0
+  - Files: `src/cycle/config.rs`
+  - Description: Add `max_permission_denials` (default 10) and `circuit_breaker_repeated` (default 5) to GlobalConfig with serde defaults. Controls between-cycle gate and mid-cycle circuit breaker.
+
+- [ ] Update integration tests for new CycleResult fields
+  - Status: Not Started
+  - Priority: P0
+  - Files: `tests/integration_test.rs`, `src/main.rs` (tests)
+  - Description: Add None for new Option fields in all manual CycleResult constructions. Add stream-JSON parsing integration test with mock data.
 
 ### Cycle Configuration
 - [x] [Define cycles.toml schema](./plans/002-full-architecture.md#1-cycle-configuration-cyclestoml)
@@ -44,7 +104,7 @@
   - Status: Not Started
   - Priority: P1
   - Files: `src/cycle/config.rs`
-  - Description: Reject malformed permission strings at config parse time (must match `ToolName` or `ToolName(specifier)` pattern). Implement when building CLI builder.
+  - Description: Reject malformed permission strings at config parse time (must match `ToolName` or `ToolName(specifier)` pattern).
 
 ### Cycle Executor
 - [x] Implement CycleExecutor struct
@@ -127,7 +187,7 @@
   - Completed: 2026-02-15
 
 - [ ] Pretty output formatting
-  - Status: Not Started
+  - Status: Superseded by "Implement rich CLI display" in Post-Dogfood section
   - Priority: P1
 
 ### Initial Cycles
@@ -152,14 +212,17 @@
   - Priority: P1
 
 ### Testing & Validation
-- [ ] Integration test: Run coding cycle end-to-end
-  - Status: Not Started
+- [x] Integration test: Run coding cycle end-to-end
+  - Status: Completed (by first dogfood coding cycle)
+  - Priority: P0
+  - Files: `tests/integration_test.rs` (6 tests)
+  - Completed: 2026-02-15
+
+- [x] Test: Gardening auto-triggers after coding
+  - Status: Completed (by first dogfood coding cycle)
   - Priority: P0
   - Files: `tests/integration_test.rs`
-
-- [ ] Test: Gardening auto-triggers after coding
-  - Status: Not Started
-  - Priority: P0
+  - Completed: 2026-02-15
 
 - [x] Test: Permission resolution (additive)
   - Status: Completed
@@ -173,22 +236,22 @@
   - Completed: 2026-02-14
 
 ### 🌱 Dogfooding Milestone
-- [ ] First dogfood: Run `/coding-iteration` as a cycle
-  - Status: Not Started
+- [x] First dogfood: Run `/coding-iteration` as a cycle
+  - Status: Completed
   - Priority: P0
-  - Description: See "Meta: First Dogfooding Milestone" at top of Phase 1
-  - Success: `flow --cycle coding` completes one task end-to-end
+  - Success: `flow --cycle coding` completed two tasks, gardening auto-triggered
+  - Completed: 2026-02-15
 
 - [ ] Second dogfood: Use Flow to implement next feature
   - Status: Not Started
   - Priority: P0
-  - Description: Once basic MVP works, use `flow --cycle coding` to build Phase 2 features
-  - Dependencies: First dogfood complete
+  - Description: Use `flow --cycle coding` to build the post-dogfood improvements (stream-JSON parser, rich display, safeguards)
+  - Dependencies: Fix cycles.toml permissions first
 
 - [ ] Document learnings and iterate
-  - Status: Not Started
+  - Status: In Progress
   - Priority: P0
-  - Description: After dogfooding, update cycles, prompts, permissions based on what worked/didn't
+  - Description: First dogfood learnings captured in plan. Key findings: permission string confusion (Write vs Edit), raw JSON output unusable, need runtime safeguards for unattended operation.
 
 ---
 
@@ -239,6 +302,11 @@
 - [ ] Cycle balance statistics
   - Priority: P1
 
+### Multi-Cycle Health Tracking (Safeguard Level 4)
+- [ ] Track cumulative health across iterations
+  - Priority: P0
+  - Description: If N cycles in a row fail or have high denial rates, stop the whole run. Builds on Phase 1 safeguard thresholds.
+
 ---
 
 ## 🔮 Phase 3: Advanced Features (Future)
@@ -254,6 +322,27 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-15 - First Dogfood Run
+
+**Completed:**
+- [x] First dogfood: `flow --cycle coding` ran successfully
+- [x] Coding cycle: wrote 6 integration tests, made run_command() public
+- [x] Gardening cycle: auto-triggered, removed dead pipeline module, cleaned up code
+- [x] Integration tests completed by Flow itself
+
+**Results:**
+- Two commits produced autonomously (e4c192f, afc075f)
+- 68 tests passing (58 lib + 4 main + 6 integration)
+- Coding cycle: 53 turns, $2.15, 4m 13s
+- Gardening cycle: 70 turns, $2.37, 4m 15s
+- 15 wasted turns on permission denials (~12% overhead)
+
+**Learnings:**
+- `Write(./TODO.md)` should be `Edit(./TODO.md)` — Edit is for modifying existing files
+- Raw stream-json stdout is unreadable for humans
+- Result blob contains rich data (summary, cost, turns, permission_denials) that was discarded
+- Need runtime safeguards for unattended operation (circuit breaker, between-cycle gate)
 
 ### 2026-02-15 - CLI Interface & Dogfooding Prerequisites
 
@@ -271,13 +360,35 @@
 - Tests: 4 new tests (build_outcome success/failure/signal, available_cycle_names)
 - Total: 62 tests passing (58 lib + 4 main)
 
-**Notes:**
-- All dogfooding prerequisites now complete
-- `flow --cycle coding` loads config, executes cycle, logs to JSONL, auto-triggers dependents
-- Gardening cycle auto-triggers after coding via `find_triggered_cycles`
-- Fail-fast on unknown cycles with helpful error messages listing available cycles
-- Iteration counter tracks position across primary + dependent cycles
-- Fixed pre-existing clippy warnings in JSONL logger tests and integration test
+### 2026-02-15 - Cycle Executor
+
+**Completed:**
+- [x] Implement CycleExecutor struct
+- [x] Stream stdout/stderr to terminal (real-time)
+- [x] Capture exit code and detect failures
+
+**Implementation:**
+- Files: `src/cycle/executor.rs`, `src/cycle/mod.rs`, `src/lib.rs`
+- Tests: 12 comprehensive tests passing (6 prepare + 6 run_command)
+
+### 2026-02-15 - Claude CLI Builder
+
+**Completed:**
+- [x] Build Claude Code CLI command with --allowedTools flags
+
+**Implementation:**
+- Files: `src/claude/cli.rs`, `src/claude/mod.rs`, `src/lib.rs`
+- Tests: 8 comprehensive tests passing (includes --verbose flag)
+
+### 2026-02-15 - Cycle Rules Engine
+
+**Completed:**
+- [x] Parse `after: [...]` from cycle config
+- [x] Implement rule evaluator
+
+**Implementation:**
+- Files: `src/cycle/rules.rs`, `src/cycle/mod.rs`, `src/lib.rs`
+- Tests: 8 comprehensive tests passing
 
 ### 2026-02-14 - Cycle Config Parser
 
@@ -289,70 +400,6 @@
 **Implementation:**
 - Files: `src/cycle/config.rs`, `src/cycle/mod.rs`, `src/lib.rs`
 - Tests: 17 comprehensive tests passing
-- Coverage: FlowConfig, GlobalConfig, CycleConfig structs, ContextMode enum, parse/validate/lookup
-- Validation: duplicate names, unknown `after` references, empty names, missing fields, invalid TOML
-
-**Notes:**
-- Serde-based TOML deserialization with custom validation
-- Default context mode is `none`, permissions default to empty vec
-- Multiline TOML prompts supported
-- `get_cycle()` lookup by name
-- `from_path()` for file-based loading
-
-### 2026-02-15 - Cycle Executor
-
-**Completed:**
-- [x] Implement CycleExecutor struct
-- [x] Stream stdout/stderr to terminal (real-time)
-- [x] Capture exit code and detect failures
-
-**Implementation:**
-- Files: `src/cycle/executor.rs`, `src/cycle/mod.rs`, `src/lib.rs`
-- Tests: 12 comprehensive tests passing (6 prepare + 6 run_command)
-- Coverage: `CycleExecutor` with `prepare()` and `execute()`, `PreparedCycle`, `CycleResult`, `run_command()` async subprocess runner
-
-**Notes:**
-- `prepare()` validates cycle exists and resolves permissions (testable without subprocess)
-- `run_command()` async function handles subprocess execution with tokio
-- Concurrent stdout/stderr reading with real-time terminal forwarding
-- Line-by-line streaming via `tokio::io::BufReader`
-- Duration tracking with `std::time::Instant`
-- Re-exported `CycleExecutor`, `CycleResult`, `PreparedCycle` from `lib.rs`
-
-### 2026-02-15 - Claude CLI Builder
-
-**Completed:**
-- [x] Build Claude Code CLI command with --allowedTools flags
-
-**Implementation:**
-- Files: `src/claude/cli.rs`, `src/claude/mod.rs`, `src/lib.rs`
-- Tests: 7 comprehensive tests passing
-- Coverage: `build_command()` function — constructs `std::process::Command` with `-p`, `--output-format stream-json`, and `--allowedTools` flags
-
-**Notes:**
-- Verified actual Claude Code CLI flags via documentation before implementing
-- Each permission passed as separate arg after `--allowedTools`
-- `--allowedTools` omitted when no permissions provided
-- `--output-format stream-json` for structured streaming output
-- Re-exported `build_command` from `lib.rs`
-
-### 2026-02-15 - Cycle Rules Engine
-
-**Completed:**
-- [x] Parse `after: [...]` from cycle config
-- [x] Implement rule evaluator
-
-**Implementation:**
-- Files: `src/cycle/rules.rs`, `src/cycle/mod.rs`, `src/lib.rs`
-- Tests: 8 comprehensive tests passing
-- Coverage: `find_triggered_cycles()` — given a completed cycle name, finds all cycles whose `after` list references it
-
-**Notes:**
-- Simple, focused function: iterates config cycles, filters by `after` dependency
-- Returns cycle names in config definition order
-- Handles: chain deps, multiple deps, empty cycles, unknown cycle names, self-references
-- Re-exported `find_triggered_cycles` from `lib.rs`
-- Remaining: wire into CLI/executor to auto-trigger dependent cycles
 
 ### 2026-02-14 - JSONL Logger
 
@@ -365,22 +412,6 @@
 **Implementation:**
 - Files: `src/log/jsonl.rs`, `src/log/mod.rs`
 - Tests: 6 comprehensive tests passing
-- Coverage: CycleOutcome struct, JsonlLogger with create/append/read operations
-- Commit: "Implement JSONL logger for cycle execution history"
-
-**Notes:**
-- Added chrono dependency for ISO 8601 timestamps
-- Added toml dependency for future cycle config parsing
-- Used tempfile crate for isolated test environments
-- Full error handling with anyhow::Result
-- Zero clippy warnings with strict linting
-- Implements append-only JSONL format for cycle execution history
-
-**Workflow Automation Added:**
-- Pre-commit git hook for automatic validation
-- `/coding-iteration` skill for structured TDD workflow
-- `/reflect` skill for iteration retrospectives
-- `/update-todos` skill for keeping TODO.md synchronized
 
 ---
 
