@@ -59,23 +59,22 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning
-**In Progress**: Nothing (awaiting implementation start)
-**Next**: Implement Phase 1 MVP components (see TODO.md)
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser
+**In Progress**: Nothing
+**Next**: Permission Resolver or Claude CLI Builder (see TODO.md)
 
 **Test Status**:
-- ✅ 1 passing (src/pipeline.rs unit test)
+- ✅ 24 passing (pipeline + jsonl + config)
 - ❌ 3 failing (tests/pipeline_test.rs - intentionally unimplemented, TDD red state)
-- ⚠️ Clippy warnings (dead code, missing docs - expected in red state)
 
-**Component Status** (all P0, none started):
+**Component Status**:
 ```
-Cycle Config Parser    | ❌ | src/cycle/config.rs
+Cycle Config Parser    | ✅ | src/cycle/config.rs (17 tests)
 Permission Resolver    | ❌ | src/claude/permissions.rs
 Cycle Executor         | ❌ | src/cycle/executor.rs
 Claude CLI Builder     | ❌ | src/claude/cli.rs
 Output Streamer        | ❌ | src/observe/stream.rs
-JSONL Logger          | ❌ | src/log/jsonl.rs
+JSONL Logger          | ✅ | src/log/jsonl.rs (6 tests)
 Cycle Rules Engine    | ❌ | src/cycle/rules.rs
 CLI Interface         | ❌ | src/main.rs
 cycles.toml           | ❌ | cycles.toml

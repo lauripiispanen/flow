@@ -17,24 +17,27 @@
   - **Why First**: Proves Flow can build Flow - validates core concept
 
 ### Cycle Configuration
-- [ ] [Define cycles.toml schema](./plans/002-full-architecture.md#1-cycle-configuration-cyclestoml)
-  - Status: Not Started
+- [x] [Define cycles.toml schema](./plans/002-full-architecture.md#1-cycle-configuration-cyclestoml)
+  - Status: Completed
   - Priority: P0
   - Files: `cycles.toml`, `src/cycle/config.rs`
+  - Completed: 2026-02-14
 
-- [ ] Implement TOML parser for cycle definitions
-  - Status: Not Started
+- [x] Implement TOML parser for cycle definitions
+  - Status: Completed
   - Priority: P0
   - Dependencies: cycles.toml schema
+  - Completed: 2026-02-14
 
 - [ ] Implement permission resolver (global + per-cycle, additive)
   - Status: Not Started
   - Priority: P0
   - Files: `src/claude/permissions.rs`
 
-- [ ] Validate cycle configuration on load
-  - Status: Not Started
+- [x] Validate cycle configuration on load
+  - Status: Completed
   - Priority: P0
+  - Completed: 2026-02-14
 
 ### Cycle Executor
 - [ ] Implement CycleExecutor struct
@@ -224,6 +227,26 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-14 - Cycle Config Parser
+
+**Completed:**
+- [x] Define cycles.toml schema
+- [x] Implement TOML parser for cycle definitions
+- [x] Validate cycle configuration on load
+
+**Implementation:**
+- Files: `src/cycle/config.rs`, `src/cycle/mod.rs`, `src/lib.rs`
+- Tests: 17 comprehensive tests passing
+- Coverage: FlowConfig, GlobalConfig, CycleConfig structs, ContextMode enum, parse/validate/lookup
+- Validation: duplicate names, unknown `after` references, empty names, missing fields, invalid TOML
+
+**Notes:**
+- Serde-based TOML deserialization with custom validation
+- Default context mode is `none`, permissions default to empty vec
+- Multiline TOML prompts supported
+- `get_cycle()` lookup by name
+- `from_path()` for file-based loading
 
 ### 2026-02-14 - JSONL Logger
 
