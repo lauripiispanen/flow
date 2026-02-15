@@ -51,18 +51,21 @@
   - Priority: P0
 
 ### JSONL Logger
-- [ ] Implement .flow/log.jsonl writer
-  - Status: Not Started
+- [x] Implement .flow/log.jsonl writer
+  - Status: Completed
   - Priority: P0
   - Files: `src/log/jsonl.rs`
+  - Completed: 2026-02-14
 
-- [ ] Append-only log entries
-  - Status: Not Started
+- [x] Append-only log entries
+  - Status: Completed
   - Priority: P0
+  - Completed: 2026-02-14
 
-- [ ] Serialize cycle outcomes to JSON
-  - Status: Not Started
+- [x] Serialize cycle outcomes to JSON
+  - Status: Completed
   - Priority: P0
+  - Completed: 2026-02-14
 
 ### Cycle Rules Engine
 - [ ] Parse `after: [...]` from cycle config
@@ -124,9 +127,10 @@
   - Priority: P0
   - Files: `tests/permissions_test.rs`
 
-- [ ] Test: JSONL logging works correctly
-  - Status: Not Started
+- [x] Test: JSONL logging works correctly
+  - Status: Completed
   - Priority: P0
+  - Completed: 2026-02-14
 
 ### 🌱 Dogfooding Milestone
 - [ ] Use Flow to implement next feature
@@ -203,7 +207,33 @@
 
 ## ✅ Completed
 
-_No completed tasks yet_
+### 2026-02-14 - JSONL Logger
+
+**Completed:**
+- [x] Implement .flow/log.jsonl writer
+- [x] Append-only log entries
+- [x] Serialize cycle outcomes to JSON
+- [x] Test: JSONL logging works correctly
+
+**Implementation:**
+- Files: `src/log/jsonl.rs`, `src/log/mod.rs`
+- Tests: 6 comprehensive tests passing
+- Coverage: CycleOutcome struct, JsonlLogger with create/append/read operations
+- Commit: "Implement JSONL logger for cycle execution history"
+
+**Notes:**
+- Added chrono dependency for ISO 8601 timestamps
+- Added toml dependency for future cycle config parsing
+- Used tempfile crate for isolated test environments
+- Full error handling with anyhow::Result
+- Zero clippy warnings with strict linting
+- Implements append-only JSONL format for cycle execution history
+
+**Workflow Automation Added:**
+- Pre-commit git hook for automatic validation
+- `/coding-iteration` skill for structured TDD workflow
+- `/reflect` skill for iteration retrospectives
+- `/update-todos` skill for keeping TODO.md synchronized
 
 ---
 
