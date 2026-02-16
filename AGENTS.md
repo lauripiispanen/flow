@@ -9,11 +9,11 @@
 **Orient → Setup → Pick Task → Implement**
 
 1. Read this file (3 min) → [TODO.md](./TODO.md) (2 min) → [plans/002-full-architecture.md](./plans/002-full-architecture.md) (5 min)
-2. Run: `cargo build && cargo test-all` (verify setup)
-3. Pick task from [TODO.md](./TODO.md) Phase 1 section
+2. Run: `cargo build && cargo test-all` (verify setup — expect 124 passing tests)
+3. Pick task from [TODO.md](./TODO.md) Phase 2 section
 4. Follow TDD: Write tests → Implement → Refactor
 
-**Suggested First Tasks**: Cycle config parser | JSONL logger | Permission resolver
+**Suggested First Tasks**: Frequency constraints | Outcome data completeness | Multi-step config parser
 
 ---
 
@@ -33,8 +33,8 @@
 
 **Data Structures**:
 ```
-cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|context]
-.flow/log.jsonl: {iteration|cycle|timestamp|outcome|files_changed|tests_passed|duration_secs}
+cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|context | [[cycle.step]]: name|session|prompt|permissions (Phase 2)]
+.flow/log.jsonl: {iteration|cycle|timestamp|outcome|duration_secs|num_turns|total_cost_usd|permission_denial_count|steps? (Phase 2)}
 .flow/progress.json: {started_at|current_iteration|max_iterations|current_cycle|current_status|cycles_executed}
 ```
 
@@ -43,37 +43,56 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 - Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle)
 - Executor → `src/cycle/executor.rs` | Build claude-code CLI command with --allowedTools flags
 - CLI builder → `src/claude/cli.rs` | Construct subprocess invocation
-- Streaming → `src/observe/stream.rs` | Real-time stdout/stderr to terminal
+- Stream parser → `src/claude/stream.rs` | Parse stream-JSON, extract results
+- Display → `src/cli/display.rs` | Rich colored terminal output
 - JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl
 - Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents
 - CLI interface → `src/main.rs` | Clap arg parsing, --cycle <name>
 
 **Phases**:
-- P1 (MVP): Manual execution `flow --cycle coding` | Dogfood target | TDD implementation | 28 tasks in TODO.md
-- P2 (Auto): Multi-iteration `flow --max-iterations 20` | AI cycle selection | Balance+context+priority optimization
+- P1 (MVP): ✅ Manual single-step cycles `flow --cycle coding` | Dogfooded twice | TDD implementation
+- P2 (Auto): Multi-step cycles | Frequency constraints | Multi-iteration runs `flow --max-iterations 20` | AI cycle selection
 - P3 (Advanced): Templates | Timeouts | Cost tracking | Parallel cycles
 
 **Full architecture**: [plans/002-full-architecture.md](./plans/002-full-architecture.md)
+**Multi-step cycles plan**: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
+
+---
+
+## Terminology
+
+Flow uses a strict 4-level hierarchy. Use these terms consistently in code, config, docs, and logs.
+
+| Level | Term | Definition | Example |
+|-------|------|------------|---------|
+| 1 | **Step** | A single Claude Code invocation (one prompt → one session) | "plan", "implement", "review" |
+| 2 | **Cycle** | A named workflow of one or more steps | "coding", "gardening" |
+| 3 | **Iteration** | One numbered pass in a run; selector picks a cycle, its steps execute | Iteration 3: coding cycle |
+| 4 | **Run** | The entire execution from `flow` invocation to completion | `flow --max-iterations 20` |
+
+**Session affinity**: Steps within the same cycle execution can share a Claude Code session via session tags. Same tag = continued session. Different tag = fresh session. Sessions do not persist across iterations.
+
+**Current state**: All existing cycles are single-step (one prompt = one step = one cycle). Multi-step cycles are planned for Phase 2. See [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md).
 
 ---
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards
-**In Progress**: Second dogfood (ready to run)
-**Next**: Run `flow --cycle coding` to validate all post-dogfood improvements, then begin Phase 2
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
+**In Progress**: Phase 2 planning (terminology, multi-step cycles, frequency constraints)
+**Next**: Implement Phase 2 features — starting with cycle frequency constraints and multi-step cycles
 
 **Test Status**:
-- ✅ 120 passing (109 lib + 5 main + 6 integration)
+- ✅ 124 passing (113 lib + 5 main + 6 integration)
 
 **Component Status**:
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests)
+Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests + 10 perm validation)
 Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
-Stream-JSON Parser    | ✅ | src/claude/stream.rs (21 tests)
-Rich CLI Display      | ✅ | src/cli/display.rs (12 tests)
+Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
+Rich CLI Display      | ✅ | src/cli/display.rs (13 tests)
 JSONL Logger          | ✅ | src/log/jsonl.rs (8 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
 CLI Interface         | ✅ | src/main.rs (5 tests, rich display + safeguards)
@@ -127,11 +146,13 @@ cargo fmt-check    # Verify formatting
 ## Cycle Types (Defined in cycles.toml)
 
 **Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: Read|Edit(./src/**)|Edit(./tests/**)|Bash(cargo *)
-**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding]
-**Review**: Code review|security|docs check | Perms: Read (read-only)
-**Planning**: Analyze TODO|create plans|prioritize | Perms: Read|Edit(./TODO.md)|Edit(./plans/**)
+**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding] (frequency constraints planned)
+**Review**: Code review|security|docs check | Perms: Read (read-only) | Not yet defined in cycles.toml
+**Planning**: Analyze TODO|create plans|prioritize | Perms: Read|Edit(./TODO.md)|Edit(./plans/**) | Not yet defined in cycles.toml
 
-**Permission Model**: Hierarchical additive (global + per-cycle, only adds never removes). Uses native Claude Code `--allowedTools` syntax (e.g., `Read`, `Edit(./src/**)`, `Bash(cargo *)`)
+All current cycles are single-step. Phase 2 adds multi-step cycles with session affinity (see [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)).
+
+**Permission Model**: Hierarchical additive (global + per-cycle + per-step, only adds never removes). Uses native Claude Code `--allowedTools` syntax (e.g., `Read`, `Edit(./src/**)`, `Bash(cargo *)`)
 
 ---
 
@@ -165,33 +186,33 @@ flow/
 ├── PLANNING_QUESTIONS.md  ← Decisions & rationale
 ├── README.md              ← Public-facing docs
 ├── Cargo.toml             ← Deps + lints config
-├── cycles.toml            ← Cycle definitions (to be created)
+├── cycles.toml            ← Cycle definitions (coding + gardening)
 ├── .flow/                 ← Runtime state (gitignored)
-│   ├── log.jsonl          ← Cycle execution history
-│   └── progress.json      ← Real-time progress
+│   ├── log.jsonl          ← Cycle execution history (8 entries from 2 dogfoods)
+│   └── progress.json      ← Real-time progress (Phase 2)
 ├── plans/
 │   ├── 001-mvp-pipeline-runner.md  ← Original MVP plan (superseded)
 │   ├── 002-full-architecture.md    ← Complete architecture (read for deep dive)
+│   ├── 003-multi-step-cycles.md    ← Multi-step cycles with session affinity (Phase 2)
 │   └── TEMPLATE.md                  ← Template for new plans
 ├── src/
-│   ├── main.rs            ← CLI entry
+│   ├── main.rs            ← CLI entry (clap + execution loop)
 │   ├── lib.rs             ← Public API
-│   ├── pipeline.rs        ← Original pipeline stub (being refactored to cycles)
-│   ├── cycle/             ← To be created
-│   │   ├── config.rs      ← Parse cycles.toml
-│   │   ├── executor.rs    ← Execute cycles
-│   │   └── rules.rs       ← Dependency triggers
-│   ├── claude/            ← To be created
-│   │   ├── cli.rs         ← CLI command builder
-│   │   └── permissions.rs ← Permission resolver
-│   ├── log/               ← To be created
-│   │   ├── jsonl.rs       ← JSONL logger
-│   │   └── progress.rs    ← Progress tracker
-│   └── observe/           ← To be created
-│       └── stream.rs      ← Output streaming
+│   ├── cycle/
+│   │   ├── config.rs      ← Parse cycles.toml (29 + 10 tests)
+│   │   ├── executor.rs    ← Execute cycles (16 tests)
+│   │   └── rules.rs       ← Dependency triggers (8 tests)
+│   ├── claude/
+│   │   ├── cli.rs         ← CLI command builder (8 tests)
+│   │   ├── permissions.rs ← Permission resolver (7 tests)
+│   │   ├── stream.rs      ← Stream-JSON parser (23 tests)
+│   │   └── session.rs     ← Session manager (Phase 2, planned)
+│   ├── cli/
+│   │   └── display.rs     ← Rich CLI display (13 tests)
+│   └── log/
+│       └── jsonl.rs       ← JSONL logger (8 tests)
 └── tests/
-    ├── pipeline_test.rs   ← Integration tests (3 failing - TDD red)
-    └── ...                ← More tests to be added
+    └── integration_test.rs ← End-to-end tests (6 tests)
 ```
 
 ---
@@ -210,6 +231,7 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 - [TODO.md](./TODO.md) - **START HERE**: Task queue organized by phase
 - [plans/002-full-architecture.md](./plans/002-full-architecture.md) - **Deep dive**: Complete architecture, data formats, examples
+- [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md) - **Phase 2**: Multi-step cycles with session affinity
 - [PLANNING_QUESTIONS.md](./PLANNING_QUESTIONS.md) - **Rationale**: Why we made specific design decisions
 - [README.md](./README.md) - **Public docs**: User-facing documentation
 - [Vercel AGENTS.md pattern](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals) - **Inspiration**: Source of this pattern
@@ -220,13 +242,15 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 ## Quick Wins for New Contributors
 
-**Easy**: JSONL logger (independent, clear scope, good tests) → `src/log/jsonl.rs`
-**Medium**: Cycle config parser (well-defined, TOML crate exists) → `src/cycle/config.rs`
-**Medium**: Permission resolver (clear algorithm, good for TDD) → `src/claude/permissions.rs`
-**Hard**: Cycle executor (integrates many components) → `src/cycle/executor.rs`
+**Phase 1 is complete.** Next tasks are Phase 2:
 
-Pick based on your comfort level. All tasks have specs in plans/002-full-architecture.md.
+**Medium**: Cycle frequency constraints (rules engine + log.jsonl query) → `src/cycle/rules.rs`
+**Medium**: Outcome data completeness (populate `files_changed`/`tests_passed`) → `src/main.rs`, `src/cycle/executor.rs`
+**Hard**: Multi-step cycle config parser → `src/cycle/config.rs` (see [plans/003](./plans/003-multi-step-cycles.md))
+**Hard**: Step executor with session affinity → `src/cycle/executor.rs`, `src/claude/session.rs`
+
+All Phase 2 tasks have specs in TODO.md and plans/003-multi-step-cycles.md.
 
 ---
 
-**Last Updated**: 2026-02-14 | **Status**: Phase 1 planning complete, implementation starting | **Next Milestone**: First component with passing tests
+**Last Updated**: 2026-02-16 | **Status**: Phase 1 complete (two dogfoods), Phase 2 planning | **Next Milestone**: Frequency constraints + multi-step cycles

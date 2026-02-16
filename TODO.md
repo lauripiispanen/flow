@@ -242,11 +242,16 @@
   - Success: `flow --cycle coding` completed two tasks, gardening auto-triggered
   - Completed: 2026-02-15
 
-- [ ] Second dogfood: Use Flow to implement next feature
-  - Status: Ready
+- [x] Second dogfood: Use Flow to implement next feature
+  - Status: Completed
   - Priority: P0
-  - Description: Use `flow --cycle coding` to build the next set of improvements. All post-dogfood prerequisites (stream-JSON parser, rich display, safeguards) now complete.
-  - Dependencies: All met
+  - Completed: 2026-02-16
+  - **Result**: Coding cycle validated permission strings (38 turns, $1.44, 197s, 0 denials). Gardening auto-triggered and cleaned dead code, unused dep, added 4 tests (65 turns, $2.65, 380s, 0 denials). Tests: 120→124. Zero permission denials (vs 15 in dogfood 1).
+  - **Learnings**:
+    - Permission denial fix was the biggest win (15→0 denials, coding got cheaper/faster)
+    - Gardening auto-triggers every time — needs frequency constraints to avoid redundant runs
+    - `files_changed` and `tests_passed` fields are never populated (always `[]`/`0`)
+    - Need clearer terminology hierarchy (step→cycle→iteration→run)
 
 - [x] Document learnings and iterate
   - Status: Completed
@@ -258,7 +263,7 @@
 
 ## 🚀 Phase 2: Automation (After Dogfooding Phase 1)
 
-**Goal**: Autonomous multi-iteration runs with smart cycle selection
+**Goal**: Multi-step cycles, frequency-aware triggering, autonomous multi-iteration runs with smart cycle selection
 
 ### Cycle Selector
 - [ ] Implement selector using Claude Sonnet API
@@ -303,6 +308,41 @@
 - [ ] Cycle balance statistics
   - Priority: P1
 
+### Cycle Frequency Constraints
+- [ ] Add `min_interval` config field for cycle triggering rules
+  - Priority: P0
+  - Description: Prevent redundant auto-triggers. Gardening currently runs after every coding cycle regardless of when it last ran. Add `min_interval` (iterations since last run) and/or `min_interval_hours` to cycle config. Rules engine checks log.jsonl before triggering.
+  - Discovered: Dogfood 2 — gardening ran twice in two dogfoods without meaningful interval
+
+- [ ] Rules engine checks last-run time before triggering
+  - Priority: P0
+  - Description: `find_triggered_cycles()` should consult log.jsonl to check when a cycle last ran and respect frequency constraints. Falls back to always-trigger if no constraint set (backward compatible).
+
+### Multi-Step Cycles (Session Reuse)
+- [x] Design multi-step cycle config format
+  - Status: Completed
+  - Priority: P0
+  - Plan: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
+  - Description: Cycles can have multiple steps, each a separate Claude Code invocation. Steps with the same session tag reuse the same session (via `--continue`/`--resume`). Enables patterns like architect→coder→architect-review.
+  - Completed: 2026-02-16
+
+- [ ] Implement step executor with session affinity
+  - Priority: P0
+  - Description: Execute steps sequentially within a cycle. Track session IDs. Steps with matching session tags continue the same Claude Code session.
+
+- [ ] Per-step permissions
+  - Priority: P1
+  - Description: Each step can have its own permissions (additive on top of cycle + global). Architect step may be read-only while coder step has write access.
+
+### Outcome Data Completeness
+- [ ] Populate `files_changed` from stream data or git diff
+  - Priority: P1
+  - Description: `files_changed` is always empty in log entries. Parse from stream events (tool use of Edit/Write) or run `git diff --name-only` after cycle completes.
+
+- [ ] Populate `tests_passed` from stream data or cargo output
+  - Priority: P1
+  - Description: `tests_passed` is always 0. Parse test count from Bash tool results in stream or run `cargo test` count after cycle.
+
 ### Multi-Cycle Health Tracking (Safeguard Level 4)
 - [ ] Track cumulative health across iterations
   - Priority: P0
@@ -323,6 +363,31 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Second Dogfood Run
+
+**Completed:**
+- [x] Second dogfood: `flow --cycle coding` ran successfully
+- [x] Coding cycle: validated permission strings at config parse time (10 new tests)
+- [x] Gardening cycle: auto-triggered, removed unused dep + dead code, added 4 tests
+
+**Results:**
+- Two commits produced autonomously (a6fee17, 2387ad7)
+- 124 tests passing (113 lib + 5 main + 6 integration)
+- Coding cycle: 38 turns, $1.44, 3m 17s — 0 permission denials
+- Gardening cycle: 65 turns, $2.65, 6m 20s — 0 permission denials
+- Total cost: $4.09 (vs $4.52 in dogfood 1)
+
+**Improvements over dogfood 1:**
+- Permission denials: 15 → 0 (permission string fixes worked)
+- Coding cycle: faster (257s→197s), cheaper ($2.15→$1.44), fewer turns (53→38)
+- Rich CLI display replaced raw JSON output
+- Runtime safeguards (circuit breaker + denial gate) in place, not triggered
+
+**Issues identified:**
+- Gardening auto-triggers every time — needs frequency constraints
+- `files_changed` and `tests_passed` never populated in log entries
+- Terminology needs formalization (step/cycle/iteration/run hierarchy)
 
 ### 2026-02-16 - Permission String Validation
 
