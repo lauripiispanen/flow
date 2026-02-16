@@ -59,30 +59,27 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests
-**In Progress**: Post-dogfood improvements (stream-JSON parser, rich CLI display, runtime safeguards)
-**Next**: Fix cycles.toml permissions → Stream-JSON parser → Rich display → Safeguards (see TODO.md)
-
-**Plan**: [Post-dogfood improvements](../.claude/plans/wiggly-wandering-corbato.md)
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards
+**In Progress**: Second dogfood (ready to run)
+**Next**: Run `flow --cycle coding` to validate all post-dogfood improvements, then begin Phase 2
 
 **Test Status**:
-- ✅ 68 passing (58 lib + 4 main + 6 integration)
+- ✅ 110 passing (99 lib + 5 main + 6 integration)
 
 **Component Status**:
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (17 tests)
+Cycle Config Parser    | ✅ | src/cycle/config.rs (19 tests)
 Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
-Cycle Executor         | ✅ | src/cycle/executor.rs (12 tests)
+Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
-Output Streamer        | ✅ | Built into executor (async line-by-line streaming)
-JSONL Logger          | ✅ | src/log/jsonl.rs (6 tests)
+Stream-JSON Parser    | ✅ | src/claude/stream.rs (21 tests)
+Rich CLI Display      | ✅ | src/cli/display.rs (12 tests)
+JSONL Logger          | ✅ | src/log/jsonl.rs (8 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
-CLI Interface         | ✅ | src/main.rs (clap --cycle, fail-fast, auto-trigger)
-cycles.toml           | ✅ | cycles.toml (coding + gardening cycles)
+CLI Interface         | ✅ | src/main.rs (5 tests, rich display + safeguards)
+cycles.toml           | ✅ | cycles.toml (coding + gardening, corrected perms)
 Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
-Stream-JSON Parser    | ❌ | src/claude/stream.rs (planned)
-Rich CLI Display      | ❌ | src/cli/display.rs (planned)
-Runtime Safeguards    | ❌ | config thresholds + circuit breaker (planned)
+Runtime Safeguards    | ✅ | circuit breaker + between-cycle gate
 ```
 
 ---

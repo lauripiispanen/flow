@@ -22,59 +22,58 @@
 > Plan: [wiggly-wandering-corbato.md](../.claude/plans/wiggly-wandering-corbato.md)
 > Discovered during first dogfood: raw JSON output, permission issues invisible, result data discarded.
 
-- [ ] Fix cycles.toml permission strings (Write → Edit)
-  - Status: Not Started
+- [x] Fix cycles.toml permission strings (Write → Edit)
+  - Status: Completed
   - Priority: P0
-  - Files: `cycles.toml`
-  - Description: Change `Write(./TODO.md)` → `Edit(./TODO.md)`, `Write(./AGENTS.md)` → `Edit(./AGENTS.md)`, `Write(./Cargo.toml)` → `Edit(./Cargo.toml)`. Write is for new files, Edit is for modifying existing files.
+  - Completed: 2026-02-16
 
-- [ ] Implement stream-JSON parser
-  - Status: Not Started
+- [x] Implement stream-JSON parser
+  - Status: Completed
   - Priority: P0
-  - Files: `src/claude/stream.rs` (new), `src/claude/mod.rs`
-  - Description: Parse Claude Code's `--output-format stream-json` stdout into structured `StreamEvent` variants (SystemInit, AssistantText, ToolUse, ToolResult, Result, Unknown). Include `suggest_permission_fix()` to map denied tools to permission strings for cycles.toml. ~15 tests.
+  - Files: `src/claude/stream.rs`, `src/claude/mod.rs`
+  - Completed: 2026-02-16
 
-- [ ] Implement rich CLI display
-  - Status: Not Started
+- [x] Implement rich CLI display
+  - Status: Completed
   - Priority: P0
-  - Files: `src/cli/display.rs` (new), `src/cli/mod.rs` (new), `Cargo.toml` (add `colored`)
-  - Description: Replace raw JSON output with human-readable terminal display. Show cycle header, assistant text, tool use summaries (one-line), tool errors highlighted, and post-cycle summary with result text, turns, cost, duration, permission denials. All output to stderr.
+  - Files: `src/cli/display.rs`, `src/cli/mod.rs`, `Cargo.toml`
+  - Completed: 2026-02-16
 
-- [ ] Extend CycleOutcome with result blob data
-  - Status: Not Started
+- [x] Extend CycleOutcome with result blob data
+  - Status: Completed
   - Priority: P0
   - Files: `src/log/jsonl.rs`
-  - Description: Add `num_turns`, `total_cost_usd`, `permission_denial_count` fields with `#[serde(default)]` for backward compat. Store actual result summary text instead of generic "Completed successfully". Remove `Eq` derive (f64).
+  - Completed: 2026-02-16
 
-- [ ] Extend CycleResult with parsed stream-json fields
-  - Status: Not Started
+- [x] Extend CycleResult with parsed stream-json fields
+  - Status: Completed
   - Priority: P0
   - Files: `src/cycle/executor.rs`
-  - Description: Add `result_text: Option<String>`, `num_turns: Option<u32>`, `total_cost_usd: Option<f64>`, `permission_denial_count: Option<u32>` to CycleResult. All Option so mock tests pass None.
+  - Completed: 2026-02-16
 
-- [ ] Implement execute_with_display() in CycleExecutor
-  - Status: Not Started
+- [x] Implement execute_with_display() in CycleExecutor
+  - Status: Completed
   - Priority: P0
   - Files: `src/cycle/executor.rs`
-  - Description: New method parallel to execute(). Integrates stream-JSON parsing + CycleDisplay for real-time human-readable output. Includes mid-cycle circuit breaker (kill subprocess if same tool denied N times in a row). Old execute() and run_command() unchanged for test compat.
+  - Completed: 2026-02-16
 
-- [ ] Wire new execution path in main.rs
-  - Status: Not Started
+- [x] Wire new execution path in main.rs
+  - Status: Completed
   - Priority: P0
   - Files: `src/main.rs`
-  - Description: Switch execute_and_log() to use execute_with_display(). Update build_outcome() to populate rich fields from parsed result. Implement between-cycle gate (stop auto-triggering dependents if permission_denial_count > threshold). Print actionable permission fix suggestions.
+  - Completed: 2026-02-16
 
-- [ ] Add safeguard thresholds to GlobalConfig
-  - Status: Not Started
+- [x] Add safeguard thresholds to GlobalConfig
+  - Status: Completed
   - Priority: P0
   - Files: `src/cycle/config.rs`
-  - Description: Add `max_permission_denials` (default 10) and `circuit_breaker_repeated` (default 5) to GlobalConfig with serde defaults. Controls between-cycle gate and mid-cycle circuit breaker.
+  - Completed: 2026-02-16
 
-- [ ] Update integration tests for new CycleResult fields
-  - Status: Not Started
+- [x] Update integration tests for new CycleResult fields
+  - Status: Completed
   - Priority: P0
-  - Files: `tests/integration_test.rs`, `src/main.rs` (tests)
-  - Description: Add None for new Option fields in all manual CycleResult constructions. Add stream-JSON parsing integration test with mock data.
+  - Files: `tests/integration_test.rs`, `src/main.rs`
+  - Completed: 2026-02-16
 
 ### Cycle Configuration
 - [x] [Define cycles.toml schema](./plans/002-full-architecture.md#1-cycle-configuration-cyclestoml)
@@ -243,15 +242,16 @@
   - Completed: 2026-02-15
 
 - [ ] Second dogfood: Use Flow to implement next feature
-  - Status: Not Started
+  - Status: Ready
   - Priority: P0
-  - Description: Use `flow --cycle coding` to build the post-dogfood improvements (stream-JSON parser, rich display, safeguards)
-  - Dependencies: Fix cycles.toml permissions first
+  - Description: Use `flow --cycle coding` to build the next set of improvements. All post-dogfood prerequisites (stream-JSON parser, rich display, safeguards) now complete.
+  - Dependencies: All met
 
-- [ ] Document learnings and iterate
-  - Status: In Progress
+- [x] Document learnings and iterate
+  - Status: Completed
   - Priority: P0
-  - Description: First dogfood learnings captured in plan. Key findings: permission string confusion (Write vs Edit), raw JSON output unusable, need runtime safeguards for unattended operation.
+  - Description: First dogfood learnings captured and acted on. All issues fixed: permission strings corrected, rich display replaces raw JSON, runtime safeguards added (circuit breaker + between-cycle gate).
+  - Completed: 2026-02-16
 
 ---
 
@@ -322,6 +322,25 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Post-Dogfood: Rich Display & Runtime Safeguards
+
+**Completed (all 9 P0 tasks in one iteration):**
+- [x] Fix cycles.toml permission strings (Write → Edit)
+- [x] Add safeguard thresholds to GlobalConfig (max_permission_denials, circuit_breaker_repeated)
+- [x] Extend CycleResult with rich fields (result_text, num_turns, total_cost_usd, permission_denial_count)
+- [x] Extend CycleOutcome with rich fields + backward-compatible serde defaults
+- [x] Implement stream-JSON parser (21 tests)
+- [x] Implement rich CLI display with colored output (12 tests)
+- [x] Implement execute_with_display() with circuit breaker (2 tests)
+- [x] Wire new execution path in main.rs with between-cycle gate
+- [x] Update all integration tests for new fields
+
+**Results:**
+- 6 commits, 110 tests passing (99 lib + 5 main + 6 integration)
+- New components: stream-JSON parser, CLI display, execute_with_display
+- Runtime safeguards: mid-cycle circuit breaker, between-cycle denial gate
+- All output now human-readable with colored formatting
 
 ### 2026-02-15 - First Dogfood Run
 
