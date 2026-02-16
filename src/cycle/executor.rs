@@ -11,7 +11,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 use crate::claude::{cli::build_command, permissions::resolve_permissions};
-use crate::cli::CycleDisplay;
+use crate::cli::{CycleDisplay, StatusLine};
 use crate::cycle::config::FlowConfig;
 
 /// Prepared cycle ready for execution
@@ -96,9 +96,13 @@ impl CycleExecutor {
         let display = CycleDisplay::new(cycle_name);
 
         display.print_header();
+        let mut status_line = StatusLine::new(cycle_name);
 
         let (accumulator, stderr, exit_code, duration_secs) =
-            run_command_with_display(cmd, &display, circuit_breaker_threshold).await?;
+            run_command_with_display(cmd, &display, &mut status_line, circuit_breaker_threshold)
+                .await?;
+
+        status_line.clear();
 
         // Extract rich fields from the accumulated result
         let (result_text, num_turns, total_cost_usd, denial_count) = match &accumulator.result {
@@ -135,13 +139,15 @@ impl CycleExecutor {
 /// Run a command with stream-JSON parsing and display.
 ///
 /// Parses each stdout line as a stream-JSON event, renders it via the display,
-/// and accumulates data. Implements a circuit breaker that kills the subprocess
-/// if a tool is denied `threshold` consecutive times.
+/// and accumulates data. Updates the status line after each event. Implements a
+/// circuit breaker that kills the subprocess if a tool is denied `threshold`
+/// consecutive times.
 ///
 /// Returns `(accumulator, stderr, exit_code, duration_secs)`.
 async fn run_command_with_display(
     cmd: std::process::Command,
     display: &CycleDisplay,
+    status_line: &mut StatusLine,
     circuit_breaker_threshold: u32,
 ) -> Result<(StreamAccumulator, String, Option<i32>, u64)> {
     let mut tokio_cmd = TokioCommand::from(cmd);
@@ -187,6 +193,8 @@ async fn run_command_with_display(
         if let Some(event) = parse_event(&line_buf) {
             display.render_event(&event);
             accumulator.process(&event);
+            status_line.update(&event);
+            status_line.print();
 
             // Circuit breaker: track consecutive tool errors
             match &event {
@@ -460,6 +468,7 @@ permissions = []
     #[tokio::test]
     async fn test_run_command_with_display_parses_stream_json() {
         let display = CycleDisplay::new("test");
+        let mut status_line = StatusLine::new("test");
         let stream_json = r#"{"type":"system","subtype":"init","model":"claude-opus-4-6","session_id":"abc"}
 {"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}
 {"type":"result","subtype":"success","is_error":false,"num_turns":3,"result":"Done","total_cost_usd":1.50,"duration_ms":5000,"permission_denials":[]}"#;
@@ -472,7 +481,9 @@ permissions = []
         cmd2.arg(stream_json);
 
         let (acc, _stderr, exit_code, _duration) =
-            run_command_with_display(cmd2, &display, 5).await.unwrap();
+            run_command_with_display(cmd2, &display, &mut status_line, 5)
+                .await
+                .unwrap();
 
         assert_eq!(exit_code, Some(0));
         assert!(acc.result.is_some());
@@ -481,13 +492,16 @@ permissions = []
     #[tokio::test]
     async fn test_run_command_with_display_captures_result_fields() {
         let display = CycleDisplay::new("test");
+        let mut status_line = StatusLine::new("test");
         let line = r#"{"type":"result","subtype":"success","is_error":false,"num_turns":10,"result":"Task completed","total_cost_usd":2.50,"duration_ms":30000,"permission_denials":["Edit"]}"#;
 
         let mut cmd = std::process::Command::new("echo");
         cmd.arg(line);
 
         let (acc, _stderr, _exit_code, _duration) =
-            run_command_with_display(cmd, &display, 5).await.unwrap();
+            run_command_with_display(cmd, &display, &mut status_line, 5)
+                .await
+                .unwrap();
 
         assert_eq!(acc.permission_denial_count(), 1);
         match &acc.result {

@@ -6,3 +6,4 @@
 pub mod display;
 
 pub use display::CycleDisplay;
+pub use display::StatusLine;

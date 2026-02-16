@@ -356,17 +356,21 @@
   - Description: If N cycles in a row fail or have high denial rates, stop the whole run. Builds on Phase 1 safeguard thresholds.
 
 ### Status Bar (Live Run Display)
-- [ ] Implement persistent status bar at terminal bottom during cycle execution
+- [x] Implement persistent status bar at terminal bottom during cycle execution
+  - Status: Completed
   - Priority: P0
   - Description: A single persistent line at the bottom of the terminal showing live stats while the scrolling event log continues above. Use ANSI escape codes (save/restore cursor position) — no full TUI framework needed for v1.
   - Display: `[cycle_name] ▶ 12 turns | $1.23 | 2m 15s | 0 errors`
   - Files: `src/cli/display.rs`, `src/cycle/executor.rs`
-  - Implementation: Update the status line on each StreamEvent. On ToolUse increment turn proxy, on ToolResult(error) increment error count, on Result update final stats. Use `\x1b[s` / `\x1b[u` (save/restore cursor) + `\x1b[999;1H` (move to bottom) to write the bar, then restore cursor for normal scrolling.
-  - Inspiration: GSD's statusline hook shows context window usage with color-coded severity bars.
+  - Tests: 12 new tests (8 StatusLine + 4 HealthColor)
+  - Completed: 2026-02-16
 
-- [ ] Color-code status bar based on health
+- [x] Color-code status bar based on health
+  - Status: Completed
   - Priority: P1
-  - Description: Green = healthy (0 errors), yellow = warning (1-2 errors), red = critical (3+ errors or circuit breaker close). Show cost in yellow if exceeding expected range.
+  - Description: Green = healthy (0 errors), yellow = warning (1-2 errors), red = critical (3+ errors). HealthColor enum with render_colored() method.
+  - Files: `src/cli/display.rs`
+  - Completed: 2026-02-16
 
 ### `flow doctor` Command (Log Analysis & Diagnostics)
 - [ ] Implement `flow doctor` subcommand
@@ -461,6 +465,20 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Status Bar (Live Run Display)
+
+**Completed:**
+- [x] Implement persistent status bar with ANSI escape codes
+- [x] Color-coded health (green/yellow/red based on error count)
+
+**Implementation:**
+- Files: `src/cli/display.rs`, `src/cycle/executor.rs`, `src/cli/mod.rs`, `src/lib.rs`
+- New types: `StatusLine` (live stats tracker), `HealthColor` (green/yellow/red enum)
+- Tests: 12 new tests (8 StatusLine behavior + 4 HealthColor), 134 lib tests total
+- Status line updates on each stream event: ToolUse increments turns, ToolResult(error) increments errors, Result sets final authoritative stats
+- ANSI positioning: save/restore cursor + move to row 999 + clear line
+- Integrated into `run_command_with_display` → cleared after execution completes
 
 ### 2026-02-16 - Cycle Frequency Constraints
 

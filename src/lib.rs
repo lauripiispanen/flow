@@ -15,7 +15,7 @@ pub mod log;
 pub use claude::cli::build_command;
 pub use claude::permissions::resolve_permissions;
 pub use claude::stream::{parse_event, StreamAccumulator, StreamEvent};
-pub use cli::CycleDisplay;
+pub use cli::{CycleDisplay, StatusLine};
 pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig};
 pub use cycle::executor::{CycleExecutor, CycleResult, PreparedCycle};
 pub use cycle::rules::find_triggered_cycles;

@@ -164,6 +164,132 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     }
 }
 
+/// Health color for the status bar
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthColor {
+    /// Healthy: 0 errors
+    Green,
+    /// Warning: 1-2 errors
+    Yellow,
+    /// Critical: 3+ errors
+    Red,
+}
+
+/// Live status bar displayed at the bottom of the terminal during cycle execution.
+///
+/// Tracks turn count, cost, elapsed time, and error count from stream events.
+/// Renders a single ANSI-formatted line using save/restore cursor positioning.
+pub struct StatusLine {
+    cycle_name: String,
+    turn_count: u32,
+    cost_usd: f64,
+    error_count: u32,
+    start: std::time::Instant,
+}
+
+impl StatusLine {
+    /// Create a new status line for the given cycle
+    #[must_use]
+    pub fn new(cycle_name: &str) -> Self {
+        Self {
+            cycle_name: cycle_name.to_string(),
+            turn_count: 0,
+            cost_usd: 0.0,
+            error_count: 0,
+            start: std::time::Instant::now(),
+        }
+    }
+
+    /// Create a status line with a specific start time (for testing)
+    #[cfg(test)]
+    fn with_start(cycle_name: &str, start: std::time::Instant) -> Self {
+        Self {
+            cycle_name: cycle_name.to_string(),
+            turn_count: 0,
+            cost_usd: 0.0,
+            error_count: 0,
+            start,
+        }
+    }
+
+    /// Update the status line from a stream event
+    pub const fn update(&mut self, event: &StreamEvent) {
+        match event {
+            StreamEvent::ToolUse { .. } => {
+                self.turn_count += 1;
+            }
+            StreamEvent::ToolResult { is_error: true, .. } => {
+                self.error_count += 1;
+            }
+            StreamEvent::Result {
+                num_turns,
+                total_cost_usd,
+                ..
+            } => {
+                self.turn_count = *num_turns;
+                self.cost_usd = *total_cost_usd;
+            }
+            _ => {}
+        }
+    }
+
+    /// Render the status line content (without ANSI cursor positioning).
+    ///
+    /// Returns the formatted string like: `[coding] ▶ 12 turns | $1.23 | 2m 15s | 0 errors`
+    #[must_use]
+    pub fn render(&self) -> String {
+        let elapsed = self.start.elapsed().as_secs();
+        let mins = elapsed / 60;
+        let secs = elapsed % 60;
+        format!(
+            "[{}] \u{25b6} {} turns | ${:.2} | {}m {:02}s | {} errors",
+            self.cycle_name, self.turn_count, self.cost_usd, mins, secs, self.error_count
+        )
+    }
+
+    /// Determine the health level based on error count.
+    ///
+    /// Returns a color indicator: green (0 errors), yellow (1-2), red (3+).
+    #[must_use]
+    pub const fn health_color(&self) -> HealthColor {
+        match self.error_count {
+            0 => HealthColor::Green,
+            1..=2 => HealthColor::Yellow,
+            _ => HealthColor::Red,
+        }
+    }
+
+    /// Render the status line with color-coded health.
+    ///
+    /// The entire line is colored based on error count:
+    /// green (healthy), yellow (warning), red (critical).
+    #[must_use]
+    pub fn render_colored(&self) -> String {
+        let content = self.render();
+        match self.health_color() {
+            HealthColor::Green => content.green().to_string(),
+            HealthColor::Yellow => content.yellow().to_string(),
+            HealthColor::Red => content.red().bold().to_string(),
+        }
+    }
+
+    /// Print the status line to the terminal using ANSI escape codes.
+    ///
+    /// Uses save cursor → move to bottom → clear line → print → restore cursor.
+    /// Color-coded based on health: green (0 errors), yellow (1-2), red (3+).
+    pub fn print(&self) {
+        let content = self.render_colored();
+        // Save cursor, move to last row, clear line, print, restore cursor
+        eprint!("\x1b[s\x1b[999;1H\x1b[2K{content}\x1b[u");
+    }
+
+    /// Clear the status line from the terminal.
+    pub fn clear(&self) {
+        // Save cursor, move to last row, clear line, restore cursor
+        eprint!("\x1b[s\x1b[999;1H\x1b[2K\x1b[u");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +414,179 @@ mod tests {
             duration_ms: 120_000,
             permission_denials: vec!["Edit".to_string(), "Bash".to_string()],
         });
+    }
+
+    // --- StatusLine tests ---
+
+    #[test]
+    fn test_status_line_new() {
+        let status = StatusLine::new("coding");
+        assert_eq!(status.cycle_name, "coding");
+        assert_eq!(status.turn_count, 0);
+        assert_eq!(status.error_count, 0);
+        assert!(status.cost_usd.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_status_line_render_initial() {
+        let status = StatusLine::with_start("coding", std::time::Instant::now());
+        let rendered = status.render();
+        assert!(rendered.contains("[coding]"));
+        assert!(rendered.contains("0 turns"));
+        assert!(rendered.contains("$0.00"));
+        assert!(rendered.contains("0 errors"));
+    }
+
+    #[test]
+    fn test_status_line_update_tool_use_increments_turns() {
+        let mut status = StatusLine::new("coding");
+        status.update(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: json!({}),
+        });
+        assert_eq!(status.turn_count, 1);
+
+        status.update(&StreamEvent::ToolUse {
+            tool_name: "Bash".to_string(),
+            input: json!({}),
+        });
+        assert_eq!(status.turn_count, 2);
+    }
+
+    #[test]
+    fn test_status_line_update_tool_error_increments_errors() {
+        let mut status = StatusLine::new("coding");
+        status.update(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "permission denied".to_string(),
+        });
+        assert_eq!(status.error_count, 1);
+    }
+
+    #[test]
+    fn test_status_line_update_tool_success_no_error_increment() {
+        let mut status = StatusLine::new("coding");
+        status.update(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "ok".to_string(),
+        });
+        assert_eq!(status.error_count, 0);
+    }
+
+    #[test]
+    fn test_status_line_update_result_sets_final_stats() {
+        let mut status = StatusLine::new("coding");
+        // Simulate some tool uses first
+        status.update(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: json!({}),
+        });
+        assert_eq!(status.turn_count, 1);
+
+        // Result event overrides with authoritative values
+        status.update(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Done".to_string(),
+            num_turns: 15,
+            total_cost_usd: 2.50,
+            duration_ms: 60000,
+            permission_denials: vec![],
+        });
+        assert_eq!(status.turn_count, 15);
+        assert!((status.cost_usd - 2.50).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_status_line_render_format() {
+        let mut status = StatusLine::with_start("gardening", std::time::Instant::now());
+        // Simulate 3 tool uses and 1 error
+        for _ in 0..3 {
+            status.update(&StreamEvent::ToolUse {
+                tool_name: "Edit".to_string(),
+                input: json!({}),
+            });
+        }
+        status.update(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "denied".to_string(),
+        });
+
+        let rendered = status.render();
+        assert!(rendered.contains("[gardening]"));
+        assert!(rendered.contains("3 turns"));
+        assert!(rendered.contains("1 errors"));
+        assert!(rendered.contains("\u{25b6}")); // ▶ character
+    }
+
+    #[test]
+    fn test_status_line_health_green_no_errors() {
+        let status = StatusLine::new("coding");
+        assert_eq!(status.health_color(), HealthColor::Green);
+    }
+
+    #[test]
+    fn test_status_line_health_yellow_few_errors() {
+        let mut status = StatusLine::new("coding");
+        status.update(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "denied".to_string(),
+        });
+        assert_eq!(status.health_color(), HealthColor::Yellow);
+
+        status.update(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "denied again".to_string(),
+        });
+        assert_eq!(status.health_color(), HealthColor::Yellow);
+    }
+
+    #[test]
+    fn test_status_line_health_red_many_errors() {
+        let mut status = StatusLine::new("coding");
+        for _ in 0..3 {
+            status.update(&StreamEvent::ToolResult {
+                is_error: true,
+                content: "denied".to_string(),
+            });
+        }
+        assert_eq!(status.health_color(), HealthColor::Red);
+    }
+
+    #[test]
+    fn test_status_line_render_colored_no_panic() {
+        let mut status = StatusLine::new("coding");
+        // Green
+        let _ = status.render_colored();
+        // Yellow
+        status.update(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "denied".to_string(),
+        });
+        let _ = status.render_colored();
+        // Red
+        for _ in 0..3 {
+            status.update(&StreamEvent::ToolResult {
+                is_error: true,
+                content: "denied".to_string(),
+            });
+        }
+        let _ = status.render_colored();
+    }
+
+    #[test]
+    fn test_status_line_ignores_irrelevant_events() {
+        let mut status = StatusLine::new("coding");
+        status.update(&StreamEvent::SystemInit {
+            model: "claude-opus-4-6".to_string(),
+            session_id: "abc".to_string(),
+        });
+        status.update(&StreamEvent::AssistantText {
+            text: "Hello".to_string(),
+        });
+        status.update(&StreamEvent::Unknown {
+            event_type: "heartbeat".to_string(),
+        });
+        assert_eq!(status.turn_count, 0);
+        assert_eq!(status.error_count, 0);
     }
 }
