@@ -60,6 +60,10 @@ pub struct CycleConfig {
     /// How much context to provide
     #[serde(default = "default_context")]
     pub context: ContextMode,
+    /// Minimum iterations since last run before this cycle can be auto-triggered.
+    /// None means no constraint (always eligible).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_interval: Option<u32>,
 }
 
 const fn default_context() -> ContextMode {
@@ -483,6 +487,70 @@ prompt = "Code"
             config.global.permissions,
             vec!["Read", "Edit(./src/**)", "Bash(cargo *)"]
         );
+    }
+
+    // --- min_interval config field tests ---
+
+    #[test]
+    fn test_min_interval_default_is_none() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let gardening = config.get_cycle("gardening").unwrap();
+        assert_eq!(gardening.min_interval, None);
+    }
+
+    #[test]
+    fn test_min_interval_parsed_from_config() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+min_interval = 3
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let gardening = config.get_cycle("gardening").unwrap();
+        assert_eq!(gardening.min_interval, Some(3));
+    }
+
+    #[test]
+    fn test_min_interval_zero_is_valid() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+min_interval = 0
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.min_interval, Some(0));
     }
 
     // --- Permission string validation tests ---

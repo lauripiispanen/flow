@@ -309,14 +309,21 @@
   - Priority: P1
 
 ### Cycle Frequency Constraints
-- [ ] Add `min_interval` config field for cycle triggering rules
+- [x] Add `min_interval` config field for cycle triggering rules
+  - Status: Completed
   - Priority: P0
-  - Description: Prevent redundant auto-triggers. Gardening currently runs after every coding cycle regardless of when it last ran. Add `min_interval` (iterations since last run) and/or `min_interval_hours` to cycle config. Rules engine checks log.jsonl before triggering.
-  - Discovered: Dogfood 2 — gardening ran twice in two dogfoods without meaningful interval
+  - Description: Added `min_interval: Option<u32>` to `CycleConfig`. Specifies minimum iterations since last run before a cycle can be auto-triggered. None = no constraint (backward compatible).
+  - Files: `src/cycle/config.rs`
+  - Tests: 3 new tests (default none, parsed from config, zero is valid)
+  - Completed: 2026-02-16
 
-- [ ] Rules engine checks last-run time before triggering
+- [x] Rules engine checks last-run time before triggering
+  - Status: Completed
   - Priority: P0
-  - Description: `find_triggered_cycles()` should consult log.jsonl to check when a cycle last ran and respect frequency constraints. Falls back to always-trigger if no constraint set (backward compatible).
+  - Description: `find_triggered_cycles()` now accepts a `&[CycleOutcome]` log slice and checks each candidate cycle's last-run iteration against its `min_interval` before triggering. Falls back to always-trigger if no constraint set (backward compatible).
+  - Files: `src/cycle/rules.rs`, `src/main.rs`, `tests/integration_test.rs`
+  - Tests: 6 new tests (blocks too recent, allows enough elapsed, allows never ran, no constraint always triggers, zero always triggers, boundary exact match)
+  - Completed: 2026-02-16
 
 ### Multi-Step Cycles (Session Reuse)
 - [x] Design multi-step cycle config format
@@ -363,6 +370,20 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Cycle Frequency Constraints
+
+**Completed:**
+- [x] Add `min_interval` config field to `CycleConfig`
+- [x] Rules engine checks log.jsonl before triggering dependent cycles
+- [x] Wire frequency-aware triggering into main loop
+- [x] Update integration tests for new `find_triggered_cycles` signature
+
+**Implementation:**
+- Files: `src/cycle/config.rs`, `src/cycle/rules.rs`, `src/main.rs`, `tests/integration_test.rs`, `cycles.toml`
+- Tests: 9 new tests (3 config + 6 rules), 133 total (122 lib + 5 main + 6 integration)
+- `find_triggered_cycles()` now accepts `&[CycleOutcome]` log history
+- Gardening cycle configured with `min_interval = 3` and `after = ["coding"]` re-enabled
 
 ### 2026-02-16 - Second Dogfood Run
 

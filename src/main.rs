@@ -146,7 +146,11 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
 
-        let triggered = find_triggered_cycles(&config, &result.cycle_name);
+        // Read log history for frequency-aware triggering
+        let log_entries = logger
+            .read_all()
+            .context("Failed to read log for frequency check")?;
+        let triggered = find_triggered_cycles(&config, &result.cycle_name, &log_entries);
         for dep_cycle in triggered {
             eprintln!("Auto-triggering dependent cycle: {dep_cycle}");
             let dep_result = execute_and_log(

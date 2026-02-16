@@ -79,22 +79,22 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 ## Current Status
 
 **Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
-**In Progress**: Phase 2 planning (terminology, multi-step cycles, frequency constraints)
-**Next**: Implement Phase 2 features — starting with cycle frequency constraints and multi-step cycles
+**In Progress**: Phase 2 implementation (multi-step cycles, cycle selector, multi-iteration loop)
+**Next**: Implement remaining Phase 2 features — multi-step cycles, cycle selector, multi-iteration loop
 
 **Test Status**:
-- ✅ 124 passing (113 lib + 5 main + 6 integration)
+- ✅ 133 passing (122 lib + 5 main + 6 integration)
 
 **Component Status**:
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests + 10 perm validation)
+Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests + 10 perm validation + 3 min_interval)
 Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
 Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
 Rich CLI Display      | ✅ | src/cli/display.rs (13 tests)
 JSONL Logger          | ✅ | src/log/jsonl.rs (8 tests)
-Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests)
+Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
 CLI Interface         | ✅ | src/main.rs (5 tests, rich display + safeguards)
 cycles.toml           | ✅ | cycles.toml (coding + gardening, corrected perms)
 Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
@@ -253,4 +253,4 @@ All Phase 2 tasks have specs in TODO.md and plans/003-multi-step-cycles.md.
 
 ---
 
-**Last Updated**: 2026-02-16 | **Status**: Phase 1 complete (two dogfoods), Phase 2 planning | **Next Milestone**: Frequency constraints + multi-step cycles
+**Last Updated**: 2026-02-16 | **Status**: Phase 1 complete, Phase 2 in progress (frequency constraints done) | **Next Milestone**: Multi-step cycles + cycle selector

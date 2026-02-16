@@ -230,8 +230,9 @@ async fn test_gardening_auto_triggers_after_coding() {
     logger.append(&coding_outcome).unwrap();
     iteration += 1;
 
-    // Find triggered cycles after coding
-    let triggered = find_triggered_cycles(&config, &coding_result.cycle_name);
+    // Find triggered cycles after coding (pass log for frequency checking)
+    let log_entries = logger.read_all().unwrap();
+    let triggered = find_triggered_cycles(&config, &coding_result.cycle_name, &log_entries);
     assert_eq!(
         triggered,
         vec!["gardening"],
