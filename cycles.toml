@@ -2,6 +2,7 @@
 #
 # Each cycle defines a prompt, permissions, and dependencies.
 # Permissions are additive: global + per-cycle.
+# Multi-iteration runs: `flow --max-iterations 10 --cycle coding`
 
 [global]
 permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Edit(./tests/**)", "Bash(cargo *)"]
@@ -29,6 +30,7 @@ Important:
 - Never skip tests (TDD is mandatory)
 - Zero clippy warnings required
 - Prefer editing existing files over creating new ones
+- Max 3 fix attempts per issue before documenting and moving on
 """
 permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
 after = []
@@ -55,5 +57,62 @@ Important:
 - Zero clippy warnings required
 """
 permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
-after = []  # Temporarily disabled — re-enable after frequency constraints are implemented
+after = ["coding"]
+min_interval = 3
 context = "none"
+
+[[cycle]]
+name = "review"
+description = "Goal-backward code review: verify what SHOULD be true, check wiring and completeness"
+prompt = """
+You are Flow's review cycle. Perform a goal-backward verification:
+
+1. Read AGENTS.md and TODO.md for context on what's been completed recently
+2. Read .flow/log.jsonl to understand recent cycle outcomes
+3. For each recently-completed task, verify 3 levels:
+   a. EXISTS: Do the expected files, functions, and tests exist?
+   b. SUBSTANTIVE: Is the implementation real (not stubs, not TODOs, not empty)?
+   c. WIRED: Is it actually connected and callable from the appropriate entry points?
+4. Check for anti-patterns: leftover TODOs, dead code, inconsistent naming
+5. Verify test coverage matches implementation scope
+6. Report findings clearly — what passes, what has gaps
+
+Important:
+- This is a read-only cycle. Do NOT modify any source code.
+- Be specific about gaps: file, line, what's missing
+- Distinguish critical gaps (broken functionality) from minor ones (style, docs)
+"""
+permissions = []
+after = ["coding"]
+min_interval = 2
+context = "summaries"
+
+[[cycle]]
+name = "planning"
+description = "Analyze project state, prioritize TODO.md, create/refine plans"
+prompt = """
+You are Flow's planning cycle. Analyze and organize the project's direction:
+
+1. Read AGENTS.md for project context and architecture
+2. Read TODO.md thoroughly — understand what's done, in progress, and pending
+3. Read recent entries in .flow/log.jsonl to understand velocity and patterns
+4. Assess the current state:
+   a. Are Phase 2 tasks properly scoped and prioritized?
+   b. Are there implicit tasks not yet captured in TODO.md?
+   c. Do any completed items have follow-up work needed?
+5. Update TODO.md:
+   a. Re-prioritize tasks based on current state
+   b. Add newly discovered tasks
+   c. Mark any tasks that are blocked and explain why
+   d. Ensure task descriptions are specific enough for a coding cycle to pick up
+6. If a new plan is needed, create it in plans/ following the TEMPLATE.md format
+7. Commit your changes
+
+Important:
+- Focus on actionable, well-scoped tasks
+- Each task should be completable in a single coding cycle
+- Keep TODO.md clean and current — remove stale items
+"""
+permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Edit(./plans/**)", "Bash(git *)"]
+after = []
+context = "full"

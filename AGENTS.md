@@ -13,7 +13,7 @@
 3. Pick task from [TODO.md](./TODO.md) Phase 2 section
 4. Follow TDD: Write tests → Implement → Refactor
 
-**Suggested First Tasks**: Frequency constraints | Outcome data completeness | Multi-step config parser
+**Suggested First Tasks**: Status bar (live run display) | `flow doctor` (log analysis) | Multi-iteration loop (`--max-iterations`)
 
 ---
 
@@ -51,8 +51,8 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 
 **Phases**:
 - P1 (MVP): ✅ Manual single-step cycles `flow --cycle coding` | Dogfooded twice | TDD implementation
-- P2 (Auto): Multi-step cycles | Frequency constraints | Multi-iteration runs `flow --max-iterations 20` | AI cycle selection
-- P3 (Advanced): Templates | Timeouts | Cost tracking | Parallel cycles
+- P2 (Auto): Status bar | `flow doctor` | Multi-iteration runs `flow --max-iterations 20` | `flow init` | `flow plan` (quick + interactive) | AI cycle selection | Multi-step cycles
+- P3 (Advanced): Templates | Timeouts | Cost tracking | Parallel (wave-based) cycles | Model profiles | State file | Pause/resume | Gap closure loops | Interactive `flow init` (project-aware scaffolding)
 
 **Full architecture**: [plans/002-full-architecture.md](./plans/002-full-architecture.md)
 **Multi-step cycles plan**: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
@@ -79,8 +79,8 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 ## Current Status
 
 **Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
-**In Progress**: Phase 2 implementation (multi-step cycles, cycle selector, multi-iteration loop)
-**Next**: Implement remaining Phase 2 features — multi-step cycles, cycle selector, multi-iteration loop
+**In Progress**: Phase 2 implementation (status bar, flow doctor, multi-iteration loop, cycle selector)
+**Next**: Status bar → flow doctor → multi-iteration loop → flow init → flow plan → cycle selector
 
 **Test Status**:
 - ✅ 133 passing (122 lib + 5 main + 6 integration)
@@ -146,9 +146,9 @@ cargo fmt-check    # Verify formatting
 ## Cycle Types (Defined in cycles.toml)
 
 **Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: Read|Edit(./src/**)|Edit(./tests/**)|Bash(cargo *)
-**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding] (frequency constraints planned)
-**Review**: Code review|security|docs check | Perms: Read (read-only) | Not yet defined in cycles.toml
-**Planning**: Analyze TODO|create plans|prioritize | Perms: Read|Edit(./TODO.md)|Edit(./plans/**) | Not yet defined in cycles.toml
+**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding], min_interval=3
+**Review**: Goal-backward verification — EXISTS|SUBSTANTIVE|WIRED checks | Perms: Read (read-only) | Triggers: after=[coding], min_interval=2
+**Planning**: Analyze TODO|create plans|prioritize|scope tasks | Perms: Read|Edit(./TODO.md)|Edit(./plans/**)|Bash(git *)
 
 All current cycles are single-step. Phase 2 adds multi-step cycles with session affinity (see [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)).
 
@@ -244,12 +244,14 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 **Phase 1 is complete.** Next tasks are Phase 2:
 
-**Medium**: Cycle frequency constraints (rules engine + log.jsonl query) → `src/cycle/rules.rs`
-**Medium**: Outcome data completeness (populate `files_changed`/`tests_passed`) → `src/main.rs`, `src/cycle/executor.rs`
-**Hard**: Multi-step cycle config parser → `src/cycle/config.rs` (see [plans/003](./plans/003-multi-step-cycles.md))
-**Hard**: Step executor with session affinity → `src/cycle/executor.rs`, `src/claude/session.rs`
+**Medium**: Status bar — persistent bottom line during runs → `src/cli/display.rs`, `src/cycle/executor.rs`
+**Medium**: `flow doctor` — log analysis + config lint + permission suggestions → `src/doctor.rs` (new)
+**Medium**: Multi-iteration loop (`--max-iterations`) → `src/main.rs`
+**Easy**: `flow init` — scaffold cycles.toml + .flow/ for new projects → `src/init.rs` (new)
+**Medium**: `flow plan` — quick idea capture (`flow plan 'idea'`) + interactive deep planning (`flow plan`) → `src/plan.rs` (new)
+**Hard**: Cycle selector (AI-driven cycle selection) → new module
 
-All Phase 2 tasks have specs in TODO.md and plans/003-multi-step-cycles.md.
+All Phase 2 tasks have specs in TODO.md.
 
 ---
 

@@ -355,6 +355,91 @@
   - Priority: P0
   - Description: If N cycles in a row fail or have high denial rates, stop the whole run. Builds on Phase 1 safeguard thresholds.
 
+### Status Bar (Live Run Display)
+- [ ] Implement persistent status bar at terminal bottom during cycle execution
+  - Priority: P0
+  - Description: A single persistent line at the bottom of the terminal showing live stats while the scrolling event log continues above. Use ANSI escape codes (save/restore cursor position) — no full TUI framework needed for v1.
+  - Display: `[cycle_name] ▶ 12 turns | $1.23 | 2m 15s | 0 errors`
+  - Files: `src/cli/display.rs`, `src/cycle/executor.rs`
+  - Implementation: Update the status line on each StreamEvent. On ToolUse increment turn proxy, on ToolResult(error) increment error count, on Result update final stats. Use `\x1b[s` / `\x1b[u` (save/restore cursor) + `\x1b[999;1H` (move to bottom) to write the bar, then restore cursor for normal scrolling.
+  - Inspiration: GSD's statusline hook shows context window usage with color-coded severity bars.
+
+- [ ] Color-code status bar based on health
+  - Priority: P1
+  - Description: Green = healthy (0 errors), yellow = warning (1-2 errors), red = critical (3+ errors or circuit breaker close). Show cost in yellow if exceeding expected range.
+
+### `flow doctor` Command (Log Analysis & Diagnostics)
+- [ ] Implement `flow doctor` subcommand
+  - Priority: P0
+  - Description: Analyze `.flow/log.jsonl` and `cycles.toml` to diagnose issues and suggest fixes. Returns structured report with categories: errors (must fix), warnings (should fix), info (suggestions).
+  - Files: `src/doctor.rs` (new), `src/main.rs`
+  - Checks:
+    - Permission analysis: scan logs for denial counts > 0, suggest exact permission strings to add
+    - Cycle health: flag cycles that consistently fail, have high turn counts, or cost anomalies
+    - Config lint: warn about cycles with `after = []` that might want dependencies, missing `min_interval` on triggered cycles
+    - Frequency tuning: suggest `min_interval` values based on actual run frequency
+    - Stale state: warn if `.flow/log.jsonl` has entries older than N days with no recent runs
+  - Inspiration: GSD's `/gsd:health` returns structured JSON with error codes (E001-E005), repairable flags, and auto-repair actions.
+
+- [ ] Store full `permission_denials` list in `CycleOutcome` (not just count)
+  - Priority: P0
+  - Description: Currently `CycleOutcome` only stores `permission_denial_count: Option<u32>`. The stream result event contains `permission_denials: Vec<String>` with the actual denied tool names. Store the full list so `flow doctor` can suggest exact permission fixes.
+  - Files: `src/log/jsonl.rs`, `src/main.rs`
+
+- [ ] `flow doctor --repair` auto-fix mode
+  - Priority: P1
+  - Description: Auto-apply safe fixes (add missing permissions to cycles.toml, set recommended min_interval values). Only for non-destructive changes. Report what was changed.
+
+### `flow plan` Command (Idea Capture & Deep Planning)
+- [ ] Implement `flow plan` subcommand with two modes
+  - Priority: P1
+  - Description: Both modes invoke Claude Code to process input and update project plan artifacts (TODO.md, cycles.toml, plans/). This is a meta command — not a cycle, but uses Claude Code under the hood.
+  - Files: `src/plan.rs` (new), `src/main.rs`
+
+- [ ] Quick mode: `flow plan '<idea>'`
+  - Priority: P1
+  - Description: One-shot idea capture. Pass a short description as a positional argument. Claude Code reads current TODO.md and project context, then appends a well-scoped task (or set of tasks) to TODO.md. For rapid idea capture or small project edits without ceremony.
+  - Usage: `flow plan 'add bookmarks for saved pages'` or `flow plan 'refactor auth to use JWT'`
+  - Output: Updated TODO.md with new tasks scoped for coding cycles. Prints what was added.
+
+- [ ] Interactive mode: `flow plan` (no arguments)
+  - Priority: P1
+  - Description: Deep idea rumination. Claude Code enters a conversational planning session — reads project context, asks clarifying questions about gray areas, explores tradeoffs, and captures decisions. Produces structured output: TODO.md tasks grouped into phases, dependency ordering, optional new cycle definitions, and optional plans/ spec files. Inspired by GSD's discuss-phase pattern (locked decisions, discretion areas, deferred ideas).
+  - Usage: `flow plan` (launches interactive Claude Code session with planning prompt)
+  - Output: Updated TODO.md, optionally new plans/*.md files, optionally suggested cycles.toml additions
+
+- [ ] Plan decomposition with task scoping
+  - Priority: P1
+  - Description: Both modes should produce tasks completable in a single coding cycle. Estimate relative complexity. Identify dependencies between tasks. Group into phases when appropriate.
+
+### `flow init` Command (Project Scaffolding)
+- [ ] Implement `flow init` subcommand for new project setup
+  - Priority: P1
+  - Description: Scaffold a new Flow-managed project. Creates `cycles.toml` with sensible defaults, `.flow/` directory, and optionally a starter `TODO.md`. For v1, use a static template with coding + gardening cycles and reasonable global permissions.
+  - Files: `src/init.rs` (new), `src/main.rs`
+  - Usage: `flow init` (in project root)
+  - Output: `cycles.toml`, `.flow/` dir, optional `TODO.md` scaffold
+  - Creates: global permissions (Read, Glob, Grep), coding cycle (with TDD prompt), gardening cycle (with maintenance prompt)
+
+- [ ] Interactive init with cycle selection (Phase 3)
+  - Priority: P2
+  - Description: `flow init` prompts user for what kinds of cycles to set up. Could detect project type (Rust/JS/Python) from existing files and suggest appropriate permissions and cycle prompts. Uses Claude Code to generate tailored cycle definitions based on the project's stack and structure.
+  - Usage: `flow init --interactive` or just `flow init` detects no existing config and offers interactive setup
+
+### Review & Planning Cycles in cycles.toml
+- [x] Define review cycle prompt in cycles.toml
+  - Status: Completed
+  - Priority: P1
+  - Description: Read-only goal-backward verification cycle. After coding, verifies: EXISTS (files/functions/tests exist), SUBSTANTIVE (real implementation, not stubs), WIRED (connected to entry points).
+  - Completed: 2026-02-16
+  - Inspiration: GSD's gsd-verifier starts from what SHOULD be true and works backwards through artifacts.
+
+- [x] Define planning cycle prompt in cycles.toml
+  - Status: Completed
+  - Priority: P1
+  - Description: Analyzes TODO.md, recent logs, project state. Re-prioritizes tasks, adds new discoveries, ensures tasks are scoped for single coding cycles.
+  - Completed: 2026-02-16
+
 ---
 
 ## 🔮 Phase 3: Advanced Features (Future)
@@ -363,9 +448,15 @@
 - [ ] Multi-part prompts (system + user)
 - [ ] Per-cycle timeout configuration
 - [ ] Cost tracking (per cycle, per iteration, global)
-- [ ] Parallel cycle execution
+- [ ] Parallel cycle execution (wave-based: group independent cycles, run in parallel)
 - [ ] Enhanced outcome capture (git, tests, lints)
-- [ ] Recovery strategies
+- [ ] Recovery strategies (auto-retry with deviation rules, max 3 fix attempts per issue)
+- [ ] Model profiles (different models for coding/review/planning — e.g., Opus for coding, Sonnet for review)
+- [ ] State file (`.flow/state.md`) — compact living memory read/written by each cycle for cross-iteration continuity
+- [ ] Pause/resume support — serialize run state to disk, allow `flow resume` to pick up where it left off
+- [ ] Goal-backward gap closure loop — verify → plan gaps → execute gaps → re-verify as a first-class workflow
+- [ ] Codebase mapping command — parallel analysis of existing codebase (stack, architecture, conventions, concerns) before first planning cycle
+- [ ] Context window awareness — track approximate token usage across cycles, warn when approaching limits
 
 ---
 
