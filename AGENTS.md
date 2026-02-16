@@ -64,11 +64,11 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 **Next**: Run `flow --cycle coding` to validate all post-dogfood improvements, then begin Phase 2
 
 **Test Status**:
-- ✅ 110 passing (99 lib + 5 main + 6 integration)
+- ✅ 120 passing (109 lib + 5 main + 6 integration)
 
 **Component Status**:
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (19 tests)
+Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests)
 Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)

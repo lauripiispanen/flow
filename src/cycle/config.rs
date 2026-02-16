@@ -129,8 +129,63 @@ impl FlowConfig {
             }
         }
 
+        // Validate permission strings in global config
+        for perm in &self.global.permissions {
+            validate_permission(perm)?;
+        }
+
+        // Validate permission strings in each cycle
+        for cycle in &self.cycles {
+            for perm in &cycle.permissions {
+                validate_permission(perm).with_context(|| format!("in cycle '{}'", cycle.name))?;
+            }
+        }
+
         Ok(())
     }
+}
+
+/// Validate that a permission string matches `--allowedTools` syntax:
+/// either `ToolName` (bare) or `ToolName(specifier)`.
+///
+/// Tool names must start with an uppercase ASCII letter and contain only
+/// ASCII alphanumeric characters.
+fn validate_permission(perm: &str) -> Result<()> {
+    if perm.is_empty() {
+        bail!("Invalid permission '': permission string cannot be empty");
+    }
+
+    // Find where the tool name ends
+    let tool_end = perm
+        .find(|c: char| !c.is_ascii_alphanumeric())
+        .unwrap_or(perm.len());
+
+    let tool_name = &perm[..tool_end];
+
+    // Tool name must be non-empty and start with uppercase
+    if tool_name.is_empty() || !tool_name.starts_with(|c: char| c.is_ascii_uppercase()) {
+        bail!("Invalid permission '{perm}': tool name must start with an uppercase letter");
+    }
+
+    let rest = &perm[tool_end..];
+
+    if rest.is_empty() {
+        // Bare tool name like "Read" — valid
+        return Ok(());
+    }
+
+    // Must be ToolName(specifier)
+    if !rest.starts_with('(') || !rest.ends_with(')') {
+        bail!("Invalid permission '{perm}': expected format 'ToolName' or 'ToolName(specifier)'");
+    }
+
+    // Extract specifier (strip outer parens)
+    let specifier = &rest[1..rest.len() - 1];
+    if specifier.is_empty() {
+        bail!("Invalid permission '{perm}': specifier inside parentheses cannot be empty");
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -428,5 +483,181 @@ prompt = "Code"
             config.global.permissions,
             vec!["Read", "Edit(./src/**)", "Bash(cargo *)"]
         );
+    }
+
+    // --- Permission string validation tests ---
+
+    #[test]
+    fn test_valid_bare_tool_name() {
+        let toml = r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        assert!(FlowConfig::parse(toml).is_ok());
+    }
+
+    #[test]
+    fn test_valid_tool_with_specifier() {
+        let toml = r#"
+[global]
+permissions = ["Edit(./src/**)", "Bash(cargo test *)"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        assert!(FlowConfig::parse(toml).is_ok());
+    }
+
+    #[test]
+    fn test_reject_lowercase_tool_name() {
+        let toml = r#"
+[global]
+permissions = ["read"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_permission_string() {
+        let toml = r#"
+[global]
+permissions = [""]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_permission_with_spaces_in_tool_name() {
+        let toml = r#"
+[global]
+permissions = ["Read Write"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_unbalanced_parens() {
+        let toml = r#"
+[global]
+permissions = ["Edit(./src/**"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_specifier() {
+        let toml = r#"
+[global]
+permissions = ["Edit()"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_permission_with_trailing_text() {
+        let toml = r#"
+[global]
+permissions = ["Edit(./src/**)extra"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_invalid_cycle_permission() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+permissions = ["not-valid!"]
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("Invalid permission"),
+            "Expected 'Invalid permission' error, got: {msg}"
+        );
+        assert!(
+            msg.contains("in cycle 'test'"),
+            "Expected cycle context, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_valid_known_tool_names() {
+        let toml = r#"
+[global]
+permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Write(./out.txt)", "Bash(cargo *)", "WebFetch", "WebSearch", "NotebookEdit(./nb.ipynb)", "Task", "TodoWrite"]
+
+[[cycle]]
+name = "test"
+description = "Test"
+prompt = "Test"
+"#;
+        assert!(FlowConfig::parse(toml).is_ok());
     }
 }

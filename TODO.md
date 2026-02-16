@@ -99,11 +99,12 @@
   - Priority: P0
   - Completed: 2026-02-14
 
-- [ ] Validate permission strings match `--allowedTools` syntax
-  - Status: Not Started
+- [x] Validate permission strings match `--allowedTools` syntax
+  - Status: Completed
   - Priority: P1
   - Files: `src/cycle/config.rs`
   - Description: Reject malformed permission strings at config parse time (must match `ToolName` or `ToolName(specifier)` pattern).
+  - Completed: 2026-02-16
 
 ### Cycle Executor
 - [x] Implement CycleExecutor struct
@@ -322,6 +323,16 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Permission String Validation
+
+**Completed:**
+- [x] Validate permission strings match `--allowedTools` syntax
+
+**Implementation:**
+- Files: `src/cycle/config.rs`
+- Tests: 10 new tests (7 rejection + 3 valid), 109 lib tests total
+- Validates at config parse time: tool name must start uppercase, specifier in parens must be non-empty, no trailing text
 
 ### 2026-02-16 - Post-Dogfood: Rich Display & Runtime Safeguards
 
