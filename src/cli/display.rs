@@ -279,7 +279,7 @@ mod tests {
             result_text: "Failed".to_string(),
             num_turns: 10,
             total_cost_usd: 2.50,
-            duration_ms: 120000,
+            duration_ms: 120_000,
             permission_denials: vec!["Edit".to_string(), "Bash".to_string()],
         });
     }

@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 
+use flow::claude::stream::suggest_permission_fix;
 use flow::cycle::config::FlowConfig;
 use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
@@ -68,17 +69,16 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
     }
 }
 
-/// Execute a cycle and log the result. Returns the `CycleResult`.
+/// Execute a cycle with rich display and log the result. Returns the `CycleResult`.
 async fn execute_and_log(
     executor: &CycleExecutor,
     logger: &JsonlLogger,
     cycle_name: &str,
     iteration: &mut u32,
+    circuit_breaker_threshold: u32,
 ) -> Result<flow::CycleResult> {
-    eprintln!("--- Executing cycle: {cycle_name} ---");
-
     let result = executor
-        .execute(cycle_name)
+        .execute_with_display(cycle_name, circuit_breaker_threshold)
         .await
         .with_context(|| format!("Failed to execute cycle '{cycle_name}'"))?;
 
@@ -87,16 +87,12 @@ async fn execute_and_log(
         .append(&outcome)
         .context("Failed to write to JSONL log")?;
 
-    if result.success {
-        eprintln!(
-            "--- Cycle '{cycle_name}' completed successfully ({} secs) ---",
-            result.duration_secs
-        );
-    } else {
-        eprintln!(
-            "--- Cycle '{cycle_name}' failed (exit code: {}) ---",
-            format_exit_code(result.exit_code)
-        );
+    // Print actionable permission fix suggestions
+    if let Some(count) = result.permission_denial_count {
+        if count > 0 {
+            eprintln!("Tip: Add permission strings to cycles.toml to avoid denials.");
+            eprintln!("     e.g. {}", suggest_permission_fix("Edit"));
+        }
     }
 
     *iteration += 1;
@@ -122,23 +118,58 @@ async fn main() -> Result<()> {
     })?;
 
     // Initialize
+    let circuit_breaker = config.global.circuit_breaker_repeated;
+    let max_denials = config.global.max_permission_denials;
     let executor = CycleExecutor::new(config.clone());
     let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
     let mut iteration: u32 = 1;
 
     // Execute the requested cycle
-    let result = execute_and_log(&executor, &logger, &cli.cycle, &mut iteration).await?;
+    let result = execute_and_log(
+        &executor,
+        &logger,
+        &cli.cycle,
+        &mut iteration,
+        circuit_breaker,
+    )
+    .await?;
 
     // Auto-trigger dependent cycles if the primary cycle succeeded
     if result.success {
+        // Between-cycle gate: stop if too many permission denials
+        let denials = result.permission_denial_count.unwrap_or(0);
+        if denials > max_denials {
+            eprintln!(
+                "Stopping: {denials} permission denials exceeded threshold ({max_denials}). \
+                 Fix permissions in cycles.toml before continuing."
+            );
+            std::process::exit(1);
+        }
+
         let triggered = find_triggered_cycles(&config, &result.cycle_name);
         for dep_cycle in triggered {
             eprintln!("Auto-triggering dependent cycle: {dep_cycle}");
-            let dep_result = execute_and_log(&executor, &logger, dep_cycle, &mut iteration).await?;
+            let dep_result = execute_and_log(
+                &executor,
+                &logger,
+                dep_cycle,
+                &mut iteration,
+                circuit_breaker,
+            )
+            .await?;
 
             if !dep_result.success {
                 eprintln!("Dependent cycle '{dep_cycle}' failed, stopping.");
                 std::process::exit(dep_result.exit_code.unwrap_or(1));
+            }
+
+            // Between-cycle gate for dependent cycles too
+            let dep_denials = dep_result.permission_denial_count.unwrap_or(0);
+            if dep_denials > max_denials {
+                eprintln!(
+                    "Stopping: {dep_denials} permission denials in '{dep_cycle}' exceeded threshold ({max_denials})."
+                );
+                std::process::exit(1);
             }
         }
     }
