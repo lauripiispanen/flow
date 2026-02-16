@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
-use std::io::Write as IoWrite;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 /// Represents the outcome of a single cycle execution

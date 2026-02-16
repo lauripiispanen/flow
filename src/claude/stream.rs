@@ -419,6 +419,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_assistant_tool_result_event() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_result","is_error":true,"content":"permission denied"}]}}"#;
+        let event = parse_event(line).unwrap();
+
+        match event {
+            StreamEvent::ToolResult { is_error, content } => {
+                assert!(is_error);
+                assert_eq!(content, "permission denied");
+            }
+            other => panic!("Expected ToolResult, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_assistant_empty_content_returns_none() {
+        let line = r#"{"type":"assistant","message":{"content":[]}}"#;
+        assert!(parse_event(line).is_none());
+    }
+
+    #[test]
+    fn test_suggest_permission_fix_write() {
+        assert_eq!(
+            suggest_permission_fix("Write"),
+            "Write(./**) or Write(./src/**)"
+        );
+    }
+
     // --- suggest_permission_fix tests ---
 
     #[test]

@@ -188,6 +188,12 @@ mod tests {
     }
 
     #[test]
+    fn test_summarize_write_tool() {
+        let input = json!({"file_path": "src/new.rs", "content": "fn main() {}"});
+        assert_eq!(summarize_tool_input("Write", &input), " src/new.rs");
+    }
+
+    #[test]
     fn test_summarize_bash_tool() {
         let input = json!({"command": "cargo test --lib"});
         assert_eq!(summarize_tool_input("Bash", &input), " `cargo test --lib`");

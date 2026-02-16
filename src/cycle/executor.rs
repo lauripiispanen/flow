@@ -80,36 +80,12 @@ impl CycleExecutor {
         })
     }
 
-    /// Execute a cycle end-to-end.
-    ///
-    /// Prepares the cycle, spawns the Claude Code subprocess,
-    /// streams output to terminal, and captures the result.
-    pub async fn execute(&self, cycle_name: &str) -> Result<CycleResult> {
-        let prepared = self.prepare(cycle_name)?;
-        let cmd = build_command(&prepared.prompt, &prepared.permissions);
-
-        let (stdout, stderr, exit_code, duration_secs) = run_command(cmd).await?;
-
-        Ok(CycleResult {
-            cycle_name: prepared.cycle_name,
-            success: exit_code == Some(0),
-            exit_code,
-            stdout,
-            stderr,
-            duration_secs,
-            result_text: None,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-        })
-    }
-
     /// Execute a cycle with rich display and stream-JSON parsing.
     ///
-    /// Like `execute()` but parses stream-JSON events for real-time display
-    /// and populates rich fields (turns, cost, denials) from the result blob.
-    /// Includes a mid-cycle circuit breaker that kills the subprocess if the
-    /// same tool is denied `circuit_breaker_threshold` times in a row.
+    /// Parses stream-JSON events for real-time display and populates rich
+    /// fields (turns, cost, denials) from the result blob. Includes a
+    /// mid-cycle circuit breaker that kills the subprocess if a tool is
+    /// denied `circuit_breaker_threshold` times in a row.
     pub async fn execute_with_display(
         &self,
         cycle_name: &str,
