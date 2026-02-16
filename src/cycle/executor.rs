@@ -9,7 +9,9 @@ use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 
+use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 use crate::claude::{cli::build_command, permissions::resolve_permissions};
+use crate::cli::CycleDisplay;
 use crate::cycle::config::FlowConfig;
 
 /// Prepared cycle ready for execution
@@ -101,6 +103,145 @@ impl CycleExecutor {
             permission_denial_count: None,
         })
     }
+
+    /// Execute a cycle with rich display and stream-JSON parsing.
+    ///
+    /// Like `execute()` but parses stream-JSON events for real-time display
+    /// and populates rich fields (turns, cost, denials) from the result blob.
+    /// Includes a mid-cycle circuit breaker that kills the subprocess if the
+    /// same tool is denied `circuit_breaker_threshold` times in a row.
+    pub async fn execute_with_display(
+        &self,
+        cycle_name: &str,
+        circuit_breaker_threshold: u32,
+    ) -> Result<CycleResult> {
+        let prepared = self.prepare(cycle_name)?;
+        let cmd = build_command(&prepared.prompt, &prepared.permissions);
+        let display = CycleDisplay::new(cycle_name);
+
+        display.print_header();
+
+        let (accumulator, stderr, exit_code, duration_secs) =
+            run_command_with_display(cmd, &display, circuit_breaker_threshold).await?;
+
+        // Extract rich fields from the accumulated result
+        let (result_text, num_turns, total_cost_usd, denial_count) = match &accumulator.result {
+            Some(StreamEvent::Result {
+                result_text,
+                num_turns,
+                total_cost_usd,
+                permission_denials,
+                ..
+            }) => (
+                Some(result_text.clone()),
+                Some(*num_turns),
+                Some(*total_cost_usd),
+                Some(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX)),
+            ),
+            _ => (None, None, None, None),
+        };
+
+        Ok(CycleResult {
+            cycle_name: prepared.cycle_name,
+            success: exit_code == Some(0),
+            exit_code,
+            stdout: String::new(), // Not captured in display mode
+            stderr,
+            duration_secs,
+            result_text,
+            num_turns,
+            total_cost_usd,
+            permission_denial_count: denial_count,
+        })
+    }
+}
+
+/// Run a command with stream-JSON parsing and display.
+///
+/// Parses each stdout line as a stream-JSON event, renders it via the display,
+/// and accumulates data. Implements a circuit breaker that kills the subprocess
+/// if a tool is denied `threshold` consecutive times.
+///
+/// Returns `(accumulator, stderr, exit_code, duration_secs)`.
+async fn run_command_with_display(
+    cmd: std::process::Command,
+    display: &CycleDisplay,
+    circuit_breaker_threshold: u32,
+) -> Result<(StreamAccumulator, String, Option<i32>, u64)> {
+    let mut tokio_cmd = TokioCommand::from(cmd);
+    tokio_cmd.stdout(Stdio::piped());
+    tokio_cmd.stderr(Stdio::piped());
+
+    let start = Instant::now();
+
+    let mut child = tokio_cmd
+        .spawn()
+        .context("Failed to spawn Claude Code process")?;
+
+    let child_stdout = child.stdout.take().context("Failed to capture stdout")?;
+    let child_stderr = child.stderr.take().context("Failed to capture stderr")?;
+
+    // Read stderr in background
+    let stderr_handle = tokio::spawn(async move {
+        let reader = BufReader::new(child_stderr);
+        let mut lines = reader.lines();
+        let mut captured = String::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if !captured.is_empty() {
+                captured.push('\n');
+            }
+            captured.push_str(&line);
+        }
+        captured
+    });
+
+    // Process stdout line-by-line with stream-JSON parsing
+    let mut accumulator = StreamAccumulator::new();
+    let mut consecutive_denials: u32 = 0;
+    let mut reader = BufReader::new(child_stdout);
+    let mut line_buf = String::new();
+
+    loop {
+        line_buf.clear();
+        let bytes_read = reader.read_line(&mut line_buf).await.unwrap_or(0);
+        if bytes_read == 0 {
+            break; // EOF or error
+        }
+
+        if let Some(event) = parse_event(&line_buf) {
+            display.render_event(&event);
+            accumulator.process(&event);
+
+            // Circuit breaker: track consecutive tool errors
+            match &event {
+                StreamEvent::ToolResult { is_error: true, .. } => {
+                    consecutive_denials += 1;
+                    if circuit_breaker_threshold > 0
+                        && consecutive_denials >= circuit_breaker_threshold
+                    {
+                        eprintln!(
+                            "Circuit breaker: {consecutive_denials} consecutive tool errors, killing subprocess"
+                        );
+                        let _ = child.kill().await;
+                        break;
+                    }
+                }
+                StreamEvent::ToolResult {
+                    is_error: false, ..
+                }
+                | StreamEvent::ToolUse { .. } => {
+                    consecutive_denials = 0;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let status = child.wait().await.context("Failed waiting for process")?;
+    let stderr_result = stderr_handle.await.context("stderr reader panicked")?;
+    let duration_secs = start.elapsed().as_secs();
+
+    Ok((accumulator, stderr_result, status.code(), duration_secs))
 }
 
 /// Run a command, streaming output to terminal and capturing it.
@@ -336,5 +477,55 @@ permissions = []
         assert_eq!(result.num_turns, Some(53));
         assert_eq!(result.total_cost_usd, Some(2.15));
         assert_eq!(result.permission_denial_count, Some(3));
+    }
+
+    // --- run_command_with_display tests ---
+
+    #[tokio::test]
+    async fn test_run_command_with_display_parses_stream_json() {
+        let display = CycleDisplay::new("test");
+        let stream_json = r#"{"type":"system","subtype":"init","model":"claude-opus-4-6","session_id":"abc"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"result":"Done","total_cost_usd":1.50,"duration_ms":5000,"permission_denials":[]}"#;
+
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c").arg(format!("printf '%s\\n' '{stream_json}'"));
+
+        // Use echo with the JSON lines
+        let mut cmd2 = std::process::Command::new("echo");
+        cmd2.arg(stream_json);
+
+        let (acc, _stderr, exit_code, _duration) =
+            run_command_with_display(cmd2, &display, 5).await.unwrap();
+
+        assert_eq!(exit_code, Some(0));
+        assert!(acc.result.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_run_command_with_display_captures_result_fields() {
+        let display = CycleDisplay::new("test");
+        let line = r#"{"type":"result","subtype":"success","is_error":false,"num_turns":10,"result":"Task completed","total_cost_usd":2.50,"duration_ms":30000,"permission_denials":["Edit"]}"#;
+
+        let mut cmd = std::process::Command::new("echo");
+        cmd.arg(line);
+
+        let (acc, _stderr, _exit_code, _duration) =
+            run_command_with_display(cmd, &display, 5).await.unwrap();
+
+        assert_eq!(acc.permission_denial_count(), 1);
+        match &acc.result {
+            Some(StreamEvent::Result {
+                num_turns,
+                total_cost_usd,
+                result_text,
+                ..
+            }) => {
+                assert_eq!(*num_turns, 10);
+                assert!((total_cost_usd - 2.50).abs() < f64::EPSILON);
+                assert_eq!(result_text, "Task completed");
+            }
+            other => panic!("Expected Result event, got {other:?}"),
+        }
     }
 }
