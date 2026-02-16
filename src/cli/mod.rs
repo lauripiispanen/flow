@@ -6,4 +6,5 @@
 pub mod display;
 
 pub use display::CycleDisplay;
+pub use display::HealthColor;
 pub use display::StatusLine;

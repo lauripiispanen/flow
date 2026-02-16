@@ -504,18 +504,17 @@ permissions = []
                 .unwrap();
 
         assert_eq!(acc.permission_denial_count(), 1);
-        match &acc.result {
-            Some(StreamEvent::Result {
-                num_turns,
-                total_cost_usd,
-                result_text,
-                ..
-            }) => {
-                assert_eq!(*num_turns, 10);
-                assert!((total_cost_usd - 2.50).abs() < f64::EPSILON);
-                assert_eq!(result_text, "Task completed");
-            }
-            other => panic!("Expected Result event, got {other:?}"),
-        }
+        let Some(StreamEvent::Result {
+            num_turns,
+            total_cost_usd,
+            result_text,
+            ..
+        }) = &acc.result
+        else {
+            panic!("Expected Result event, got {:?}", acc.result);
+        };
+        assert_eq!(*num_turns, 10);
+        assert!((total_cost_usd - 2.50).abs() < f64::EPSILON);
+        assert_eq!(result_text, "Task completed");
     }
 }

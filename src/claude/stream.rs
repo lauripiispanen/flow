@@ -270,13 +270,11 @@ mod tests {
         let line = r#"{"type":"system","subtype":"init","model":"claude-opus-4-6","session_id":"abc-123","tools":["Read","Edit"]}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::SystemInit { model, session_id } => {
-                assert_eq!(model, "claude-opus-4-6");
-                assert_eq!(session_id, "abc-123");
-            }
-            other => panic!("Expected SystemInit, got {other:?}"),
-        }
+        let StreamEvent::SystemInit { model, session_id } = event else {
+            panic!("Expected SystemInit, got {event:?}");
+        };
+        assert_eq!(model, "claude-opus-4-6");
+        assert_eq!(session_id, "abc-123");
     }
 
     #[test]
@@ -284,12 +282,10 @@ mod tests {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello! How can I help?"}]}}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::AssistantText { text } => {
-                assert_eq!(text, "Hello! How can I help?");
-            }
-            other => panic!("Expected AssistantText, got {other:?}"),
-        }
+        let StreamEvent::AssistantText { text } = event else {
+            panic!("Expected AssistantText, got {event:?}");
+        };
+        assert_eq!(text, "Hello! How can I help?");
     }
 
     #[test]
@@ -297,13 +293,11 @@ mod tests {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file":"test.rs"}}]}}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::ToolUse { tool_name, input } => {
-                assert_eq!(tool_name, "Edit");
-                assert_eq!(input["file"], "test.rs");
-            }
-            other => panic!("Expected ToolUse, got {other:?}"),
-        }
+        let StreamEvent::ToolUse { tool_name, input } = event else {
+            panic!("Expected ToolUse, got {event:?}");
+        };
+        assert_eq!(tool_name, "Edit");
+        assert_eq!(input["file"], "test.rs");
     }
 
     #[test]
@@ -311,24 +305,23 @@ mod tests {
         let line = r#"{"type":"result","subtype":"success","is_error":false,"num_turns":5,"result":"Task completed","total_cost_usd":1.23,"duration_ms":45000,"permission_denials":[]}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::Result {
-                is_error,
-                result_text,
-                num_turns,
-                total_cost_usd,
-                duration_ms,
-                permission_denials,
-            } => {
-                assert!(!is_error);
-                assert_eq!(result_text, "Task completed");
-                assert_eq!(num_turns, 5);
-                assert!((total_cost_usd - 1.23).abs() < f64::EPSILON);
-                assert_eq!(duration_ms, 45000);
-                assert!(permission_denials.is_empty());
-            }
-            other => panic!("Expected Result, got {other:?}"),
-        }
+        let StreamEvent::Result {
+            is_error,
+            result_text,
+            num_turns,
+            total_cost_usd,
+            duration_ms,
+            permission_denials,
+        } = event
+        else {
+            panic!("Expected Result, got {event:?}");
+        };
+        assert!(!is_error);
+        assert_eq!(result_text, "Task completed");
+        assert_eq!(num_turns, 5);
+        assert!((total_cost_usd - 1.23).abs() < f64::EPSILON);
+        assert_eq!(duration_ms, 45000);
+        assert!(permission_denials.is_empty());
     }
 
     #[test]
@@ -336,14 +329,13 @@ mod tests {
         let line = r#"{"type":"result","subtype":"success","is_error":false,"num_turns":10,"result":"Done","total_cost_usd":2.50,"duration_ms":60000,"permission_denials":["Edit","Bash"]}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::Result {
-                permission_denials, ..
-            } => {
-                assert_eq!(permission_denials, vec!["Edit", "Bash"]);
-            }
-            other => panic!("Expected Result, got {other:?}"),
-        }
+        let StreamEvent::Result {
+            permission_denials, ..
+        } = event
+        else {
+            panic!("Expected Result, got {event:?}");
+        };
+        assert_eq!(permission_denials, vec!["Edit", "Bash"]);
     }
 
     #[test]
@@ -351,12 +343,10 @@ mod tests {
         let line = r#"{"type":"result","subtype":"error","is_error":true,"num_turns":1,"result":"Error occurred","total_cost_usd":0.05,"duration_ms":1000,"permission_denials":[]}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::Result { is_error, .. } => {
-                assert!(is_error);
-            }
-            other => panic!("Expected Result, got {other:?}"),
-        }
+        let StreamEvent::Result { is_error, .. } = event else {
+            panic!("Expected Result, got {event:?}");
+        };
+        assert!(is_error);
     }
 
     #[test]
@@ -364,12 +354,10 @@ mod tests {
         let line = r#"{"type":"heartbeat","data":"ping"}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::Unknown { event_type } => {
-                assert_eq!(event_type, "heartbeat");
-            }
-            other => panic!("Expected Unknown, got {other:?}"),
-        }
+        let StreamEvent::Unknown { event_type } = event else {
+            panic!("Expected Unknown, got {event:?}");
+        };
+        assert_eq!(event_type, "heartbeat");
     }
 
     #[test]
@@ -385,13 +373,11 @@ mod tests {
         let line = r#"{"type":"system","subtype":"init","cwd":"/Users/test/project","session_id":"f9c16ac1","tools":["Read","Edit"],"model":"claude-opus-4-6","permissionMode":"default"}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::SystemInit { model, session_id } => {
-                assert_eq!(model, "claude-opus-4-6");
-                assert_eq!(session_id, "f9c16ac1");
-            }
-            other => panic!("Expected SystemInit, got {other:?}"),
-        }
+        let StreamEvent::SystemInit { model, session_id } = event else {
+            panic!("Expected SystemInit, got {event:?}");
+        };
+        assert_eq!(model, "claude-opus-4-6");
+        assert_eq!(session_id, "f9c16ac1");
     }
 
     #[test]
@@ -399,24 +385,23 @@ mod tests {
         let line = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":2166,"duration_api_ms":2142,"num_turns":1,"result":"Hello! How can I help you today?","total_cost_usd":0.12109,"usage":{"input_tokens":3},"permission_denials":[]}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::Result {
-                is_error,
-                result_text,
-                num_turns,
-                total_cost_usd,
-                duration_ms,
-                permission_denials,
-            } => {
-                assert!(!is_error);
-                assert_eq!(result_text, "Hello! How can I help you today?");
-                assert_eq!(num_turns, 1);
-                assert!((total_cost_usd - 0.12109).abs() < 0.00001);
-                assert_eq!(duration_ms, 2166);
-                assert!(permission_denials.is_empty());
-            }
-            other => panic!("Expected Result, got {other:?}"),
-        }
+        let StreamEvent::Result {
+            is_error,
+            result_text,
+            num_turns,
+            total_cost_usd,
+            duration_ms,
+            permission_denials,
+        } = event
+        else {
+            panic!("Expected Result, got {event:?}");
+        };
+        assert!(!is_error);
+        assert_eq!(result_text, "Hello! How can I help you today?");
+        assert_eq!(num_turns, 1);
+        assert!((total_cost_usd - 0.12109).abs() < 0.00001);
+        assert_eq!(duration_ms, 2166);
+        assert!(permission_denials.is_empty());
     }
 
     #[test]
@@ -424,13 +409,11 @@ mod tests {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_result","is_error":true,"content":"permission denied"}]}}"#;
         let event = parse_event(line).unwrap();
 
-        match event {
-            StreamEvent::ToolResult { is_error, content } => {
-                assert!(is_error);
-                assert_eq!(content, "permission denied");
-            }
-            other => panic!("Expected ToolResult, got {other:?}"),
-        }
+        let StreamEvent::ToolResult { is_error, content } = event else {
+            panic!("Expected ToolResult, got {event:?}");
+        };
+        assert!(is_error);
+        assert_eq!(content, "permission denied");
     }
 
     #[test]

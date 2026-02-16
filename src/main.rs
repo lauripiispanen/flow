@@ -69,6 +69,17 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
     }
 }
 
+/// Check if permission denials exceed the threshold and exit if so.
+fn check_denial_gate(denials: u32, max_denials: u32, cycle_name: &str) {
+    if denials > max_denials {
+        eprintln!(
+            "Stopping: {denials} permission denials in '{cycle_name}' exceeded threshold ({max_denials}). \
+             Fix permissions in cycles.toml before continuing."
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Execute a cycle with rich display and log the result. Returns the `CycleResult`.
 async fn execute_and_log(
     executor: &CycleExecutor,
@@ -137,14 +148,11 @@ async fn main() -> Result<()> {
     // Auto-trigger dependent cycles if the primary cycle succeeded
     if result.success {
         // Between-cycle gate: stop if too many permission denials
-        let denials = result.permission_denial_count.unwrap_or(0);
-        if denials > max_denials {
-            eprintln!(
-                "Stopping: {denials} permission denials exceeded threshold ({max_denials}). \
-                 Fix permissions in cycles.toml before continuing."
-            );
-            std::process::exit(1);
-        }
+        check_denial_gate(
+            result.permission_denial_count.unwrap_or(0),
+            max_denials,
+            &result.cycle_name,
+        );
 
         // Read log history for frequency-aware triggering
         let log_entries = logger
@@ -168,13 +176,11 @@ async fn main() -> Result<()> {
             }
 
             // Between-cycle gate for dependent cycles too
-            let dep_denials = dep_result.permission_denial_count.unwrap_or(0);
-            if dep_denials > max_denials {
-                eprintln!(
-                    "Stopping: {dep_denials} permission denials in '{dep_cycle}' exceeded threshold ({max_denials})."
-                );
-                std::process::exit(1);
-            }
+            check_denial_gate(
+                dep_result.permission_denial_count.unwrap_or(0),
+                max_denials,
+                dep_cycle,
+            );
         }
     }
 
@@ -283,6 +289,26 @@ mod tests {
         assert_eq!(outcome.num_turns, Some(53));
         assert_eq!(outcome.total_cost_usd, Some(2.15));
         assert_eq!(outcome.permission_denial_count, Some(3));
+    }
+
+    #[test]
+    fn test_format_exit_code_some() {
+        assert_eq!(format_exit_code(Some(0)), "0");
+        assert_eq!(format_exit_code(Some(1)), "1");
+        assert_eq!(format_exit_code(Some(127)), "127");
+    }
+
+    #[test]
+    fn test_format_exit_code_none() {
+        assert_eq!(format_exit_code(None), "unknown");
+    }
+
+    #[test]
+    fn test_check_denial_gate_below_threshold_does_not_exit() {
+        // Should return normally when denials <= max_denials
+        check_denial_gate(0, 10, "coding");
+        check_denial_gate(5, 10, "coding");
+        check_denial_gate(10, 10, "coding"); // equal is not exceeded
     }
 
     #[test]
