@@ -48,6 +48,8 @@ pub struct CycleResult {
     pub total_cost_usd: Option<f64>,
     /// Number of permission denials during the cycle
     pub permission_denial_count: Option<u32>,
+    /// List of denied tool names (e.g., `["Edit", "Bash"]`)
+    pub permission_denials: Option<Vec<String>>,
 }
 
 /// Executes cycles by invoking Claude Code CLI
@@ -105,21 +107,27 @@ impl CycleExecutor {
         status_line.clear();
 
         // Extract rich fields from the accumulated result
-        let (result_text, num_turns, total_cost_usd, denial_count) = match &accumulator.result {
-            Some(StreamEvent::Result {
-                result_text,
-                num_turns,
-                total_cost_usd,
-                permission_denials,
-                ..
-            }) => (
-                Some(result_text.clone()),
-                Some(*num_turns),
-                Some(*total_cost_usd),
-                Some(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX)),
-            ),
-            _ => (None, None, None, None),
-        };
+        let (result_text, num_turns, total_cost_usd, denial_count, denials) =
+            match &accumulator.result {
+                Some(StreamEvent::Result {
+                    result_text,
+                    num_turns,
+                    total_cost_usd,
+                    permission_denials,
+                    ..
+                }) => (
+                    Some(result_text.clone()),
+                    Some(*num_turns),
+                    Some(*total_cost_usd),
+                    Some(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX)),
+                    if permission_denials.is_empty() {
+                        None
+                    } else {
+                        Some(permission_denials.clone())
+                    },
+                ),
+                _ => (None, None, None, None, None),
+            };
 
         Ok(CycleResult {
             cycle_name: prepared.cycle_name,
@@ -132,6 +140,7 @@ impl CycleExecutor {
             num_turns,
             total_cost_usd,
             permission_denial_count: denial_count,
+            permission_denials: denials,
         })
     }
 }
@@ -436,6 +445,7 @@ permissions = []
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
         assert!(result.result_text.is_none());
         assert!(result.num_turns.is_none());
@@ -456,11 +466,17 @@ permissions = []
             num_turns: Some(53),
             total_cost_usd: Some(2.15),
             permission_denial_count: Some(3),
+            permission_denials: Some(vec![
+                "Edit".to_string(),
+                "Bash".to_string(),
+                "Edit".to_string(),
+            ]),
         };
         assert_eq!(result.result_text.as_deref(), Some("Implemented feature X"));
         assert_eq!(result.num_turns, Some(53));
         assert_eq!(result.total_cost_usd, Some(2.15));
         assert_eq!(result.permission_denial_count, Some(3));
+        assert_eq!(result.permission_denials.as_ref().unwrap().len(), 3);
     }
 
     // --- run_command_with_display tests ---

@@ -66,6 +66,7 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
         num_turns: result.num_turns,
         total_cost_usd: result.total_cost_usd,
         permission_denial_count: result.permission_denial_count,
+        permission_denials: result.permission_denials.clone(),
     }
 }
 
@@ -220,6 +221,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -243,6 +245,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome = build_outcome(&result, 3);
@@ -263,6 +266,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -282,6 +286,11 @@ mod tests {
             num_turns: Some(53),
             total_cost_usd: Some(2.15),
             permission_denial_count: Some(3),
+            permission_denials: Some(vec![
+                "Edit".to_string(),
+                "Bash".to_string(),
+                "Edit".to_string(),
+            ]),
         };
 
         let outcome = build_outcome(&result, 1);
@@ -289,6 +298,7 @@ mod tests {
         assert_eq!(outcome.num_turns, Some(53));
         assert_eq!(outcome.total_cost_usd, Some(2.15));
         assert_eq!(outcome.permission_denial_count, Some(3));
+        assert_eq!(outcome.permission_denials.as_ref().unwrap().len(), 3);
     }
 
     #[test]

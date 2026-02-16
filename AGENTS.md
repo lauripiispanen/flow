@@ -80,10 +80,10 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 
 **Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
 **In Progress**: Phase 2 implementation (status bar, flow doctor, multi-iteration loop, cycle selector)
-**Next**: flow doctor → multi-iteration loop → flow init → flow plan → cycle selector
+**Next**: flow doctor CLI wiring → multi-iteration loop → flow init → flow plan → cycle selector
 
 **Test Status**:
-- ✅ 145 passing (134 lib + 5 main + 6 integration)
+- ✅ 165 passing (151 lib + 8 main + 6 integration)
 
 **Component Status**:
 ```
@@ -93,8 +93,9 @@ Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
 Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
 Rich CLI Display      | ✅ | src/cli/display.rs (25 tests, includes status bar + health colors)
-JSONL Logger          | ✅ | src/log/jsonl.rs (8 tests)
+JSONL Logger          | ✅ | src/log/jsonl.rs (12 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
+Doctor Diagnostics    | ✅ | src/doctor.rs (14 tests)
 CLI Interface         | ✅ | src/main.rs (5 tests, rich display + safeguards)
 cycles.toml           | ✅ | cycles.toml (coding + gardening, corrected perms)
 Integration Tests     | ✅ | tests/integration_test.rs (6 tests)

@@ -35,6 +35,9 @@ pub struct CycleOutcome {
     /// Number of permission denials during the cycle
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_denial_count: Option<u32>,
+    /// List of denied tool names (e.g., `["Edit", "Bash"]`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_denials: Option<Vec<String>>,
 }
 
 /// JSONL logger for cycle execution history
@@ -167,6 +170,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -190,6 +194,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -203,6 +208,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -238,6 +244,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -251,6 +258,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -283,6 +291,7 @@ mod tests {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         logger.append(&original).unwrap();
@@ -316,6 +325,11 @@ mod tests {
             num_turns: Some(53),
             total_cost_usd: Some(2.15),
             permission_denial_count: Some(3),
+            permission_denials: Some(vec![
+                "Edit".to_string(),
+                "Bash".to_string(),
+                "Edit".to_string(),
+            ]),
         };
 
         logger.append(&outcome).unwrap();
@@ -325,6 +339,7 @@ mod tests {
         assert_eq!(entries[0].num_turns, Some(53));
         assert_eq!(entries[0].total_cost_usd, Some(2.15));
         assert_eq!(entries[0].permission_denial_count, Some(3));
+        assert_eq!(entries[0].permission_denials.as_ref().unwrap().len(), 3);
     }
 
     #[test]
@@ -341,5 +356,76 @@ mod tests {
         assert_eq!(entries[0].num_turns, None);
         assert_eq!(entries[0].total_cost_usd, None);
         assert_eq!(entries[0].permission_denial_count, None);
+        assert_eq!(entries[0].permission_denials, None);
+    }
+
+    #[test]
+    fn test_cycle_outcome_with_permission_denials_list() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        let outcome = CycleOutcome {
+            iteration: 1,
+            cycle: "coding".to_string(),
+            timestamp: Utc::now(),
+            outcome: "Completed with denials".to_string(),
+            files_changed: vec![],
+            tests_passed: 0,
+            duration_secs: 120,
+            num_turns: Some(10),
+            total_cost_usd: Some(1.50),
+            permission_denial_count: Some(2),
+            permission_denials: Some(vec!["Edit".to_string(), "Bash".to_string()]),
+        };
+
+        logger.append(&outcome).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].permission_denials,
+            Some(vec!["Edit".to_string(), "Bash".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_cycle_outcome_permission_denials_omitted_when_none() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        let outcome = CycleOutcome {
+            iteration: 1,
+            cycle: "coding".to_string(),
+            timestamp: Utc::now(),
+            outcome: "done".to_string(),
+            files_changed: vec![],
+            tests_passed: 0,
+            duration_secs: 60,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+        };
+
+        logger.append(&outcome).unwrap();
+
+        // Read raw JSON to verify the field is not present
+        let content = fs::read_to_string(logger.log_path()).unwrap();
+        assert!(!content.contains("permission_denials"));
+    }
+
+    #[test]
+    fn test_cycle_outcome_backward_compat_with_count_but_no_list() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        // Simulate format that has permission_denial_count but not permission_denials
+        let json = r#"{"iteration":1,"cycle":"coding","timestamp":"2026-02-15T00:00:00Z","outcome":"done","files_changed":[],"tests_passed":0,"duration_secs":60,"permission_denial_count":3}"#;
+        std::fs::write(logger.log_path(), format!("{json}\n")).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].permission_denial_count, Some(3));
+        assert_eq!(entries[0].permission_denials, None);
     }
 }

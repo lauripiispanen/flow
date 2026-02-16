@@ -373,22 +373,22 @@
   - Completed: 2026-02-16
 
 ### `flow doctor` Command (Log Analysis & Diagnostics)
-- [ ] Implement `flow doctor` subcommand
+- [x] Implement `flow doctor` diagnostic engine
+  - Status: Completed
   - Priority: P0
-  - Description: Analyze `.flow/log.jsonl` and `cycles.toml` to diagnose issues and suggest fixes. Returns structured report with categories: errors (must fix), warnings (should fix), info (suggestions).
-  - Files: `src/doctor.rs` (new), `src/main.rs`
-  - Checks:
-    - Permission analysis: scan logs for denial counts > 0, suggest exact permission strings to add
-    - Cycle health: flag cycles that consistently fail, have high turn counts, or cost anomalies
-    - Config lint: warn about cycles with `after = []` that might want dependencies, missing `min_interval` on triggered cycles
-    - Frequency tuning: suggest `min_interval` values based on actual run frequency
-    - Stale state: warn if `.flow/log.jsonl` has entries older than N days with no recent runs
-  - Inspiration: GSD's `/gsd:health` returns structured JSON with error codes (E001-E005), repairable flags, and auto-repair actions.
+  - Description: Diagnostic engine with 6 checks (D001–D006): permission denial detection, cycle health analysis, cost anomaly detection, config lint, and frequency tuning suggestions. Returns structured `DiagnosticReport` with severity-ordered findings.
+  - Files: `src/doctor.rs` (new), `src/lib.rs`
+  - Tests: 14 new tests
+  - Completed: 2026-02-16
+  - Note: CLI wiring (`flow doctor` subcommand) still needed — this implements the core diagnostic logic.
 
-- [ ] Store full `permission_denials` list in `CycleOutcome` (not just count)
+- [x] Store full `permission_denials` list in `CycleOutcome` (not just count)
+  - Status: Completed
   - Priority: P0
-  - Description: Currently `CycleOutcome` only stores `permission_denial_count: Option<u32>`. The stream result event contains `permission_denials: Vec<String>` with the actual denied tool names. Store the full list so `flow doctor` can suggest exact permission fixes.
-  - Files: `src/log/jsonl.rs`, `src/main.rs`
+  - Description: Added `permission_denials: Option<Vec<String>>` to both `CycleOutcome` and `CycleResult`. Stream result's denied tool names are now stored in full, enabling `flow doctor` to suggest exact permission fixes.
+  - Files: `src/log/jsonl.rs`, `src/cycle/executor.rs`, `src/main.rs`
+  - Tests: 4 new tests (round-trip serialization, backward compat, omit when none)
+  - Completed: 2026-02-16
 
 - [ ] `flow doctor --repair` auto-fix mode
   - Priority: P1
@@ -465,6 +465,25 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-16 - Flow Doctor Diagnostic Engine & Permission Denials
+
+**Completed:**
+- [x] Store full `permission_denials` list in `CycleOutcome` and `CycleResult`
+- [x] Implement `flow doctor` diagnostic engine with 6 checks (D001–D006)
+
+**Implementation:**
+- Files: `src/doctor.rs` (new), `src/log/jsonl.rs`, `src/cycle/executor.rs`, `src/main.rs`, `src/lib.rs`
+- New types: `DiagnosticReport`, `Finding`, `Severity`
+- Tests: 18 new tests (14 doctor + 4 JSONL permission_denials), 151 lib tests total
+- Diagnostic checks:
+  - D001: Permission denial detection with exact fix suggestions
+  - D002: Cycle health (frequent failures)
+  - D003: Cost anomaly detection (>$5/cycle)
+  - D004: Config lint (triggered cycles without min_interval)
+  - D005: Missing permissions warning
+  - D006: Frequency tuning suggestions
+- Backward compatible: `permission_denials` field is optional with serde defaults
 
 ### 2026-02-16 - Status Bar (Live Run Display)
 

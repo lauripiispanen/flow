@@ -87,6 +87,7 @@ async fn test_coding_cycle_end_to_end() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
 
     let outcome = CycleOutcome {
@@ -104,6 +105,7 @@ async fn test_coding_cycle_end_to_end() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -152,6 +154,7 @@ async fn test_failed_cycle_logged_correctly() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
 
     let outcome = CycleOutcome {
@@ -170,6 +173,7 @@ async fn test_failed_cycle_logged_correctly() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -212,6 +216,7 @@ async fn test_gardening_auto_triggers_after_coding() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
 
     // Log coding result
@@ -226,6 +231,7 @@ async fn test_gardening_auto_triggers_after_coding() {
         num_turns: None,
         total_cost_usd: None,
         permission_denial_count: None,
+        permission_denials: None,
     };
     logger.append(&coding_outcome).unwrap();
     iteration += 1;
