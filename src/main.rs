@@ -112,8 +112,11 @@ async fn execute_and_log(
     iteration: &mut u32,
     circuit_breaker_threshold: u32,
 ) -> Result<flow::CycleResult> {
+    // Read log entries for context injection
+    let log_entries = logger.read_all().unwrap_or_default();
+
     let result = executor
-        .execute_with_display(cycle_name, circuit_breaker_threshold)
+        .execute_with_display(cycle_name, circuit_breaker_threshold, &log_entries)
         .await
         .with_context(|| format!("Failed to execute cycle '{cycle_name}'"))?;
 

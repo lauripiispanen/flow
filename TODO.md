@@ -8,12 +8,14 @@
 ## Phase 2: Automation (in progress)
 
 ### Iteration Context
-- [ ] Implement context modes (full, summaries, none)
+- [x] Implement context modes (full, summaries, none)
   - Priority: P0
   - Description: The `context` field is parsed from config but not yet used. Inject log history into cycle prompts based on the mode.
+  - Completed: 2026-02-17
 
-- [ ] Context injection into cycle prompts
+- [x] Context injection into cycle prompts
   - Priority: P0
+  - Completed: 2026-02-17
 
 ### Multi-Step Cycles (Session Reuse)
 - [ ] Implement step executor with session affinity

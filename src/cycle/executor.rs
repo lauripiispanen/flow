@@ -13,6 +13,8 @@ use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 use crate::claude::{cli::build_command, permissions::resolve_permissions};
 use crate::cli::{CycleDisplay, StatusLine};
 use crate::cycle::config::FlowConfig;
+use crate::cycle::context::{build_context, inject_context};
+use crate::log::jsonl::CycleOutcome;
 
 /// Prepared cycle ready for execution
 #[derive(Debug)]
@@ -68,16 +70,30 @@ impl CycleExecutor {
     ///
     /// Validates the cycle exists and resolves effective permissions.
     pub fn prepare(&self, cycle_name: &str) -> Result<PreparedCycle> {
+        self.prepare_with_context(cycle_name, &[])
+    }
+
+    /// Prepare a cycle for execution with log history context injection.
+    ///
+    /// Validates the cycle exists, resolves effective permissions, and injects
+    /// historical context into the prompt based on the cycle's `context` mode.
+    pub fn prepare_with_context(
+        &self,
+        cycle_name: &str,
+        log_entries: &[CycleOutcome],
+    ) -> Result<PreparedCycle> {
         let cycle = self
             .config
             .get_cycle(cycle_name)
             .with_context(|| format!("Unknown cycle: '{cycle_name}'"))?;
 
         let permissions = resolve_permissions(&self.config.global, cycle);
+        let context = build_context(&cycle.context, log_entries);
+        let prompt = inject_context(&cycle.prompt, context);
 
         Ok(PreparedCycle {
             cycle_name: cycle_name.to_string(),
-            prompt: cycle.prompt.clone(),
+            prompt,
             permissions,
         })
     }
@@ -88,12 +104,16 @@ impl CycleExecutor {
     /// fields (turns, cost, denials) from the result blob. Includes a
     /// mid-cycle circuit breaker that kills the subprocess if a tool is
     /// denied `circuit_breaker_threshold` times in a row.
+    ///
+    /// Log entries are injected into the prompt as context based on the cycle's
+    /// `context` mode configuration.
     pub async fn execute_with_display(
         &self,
         cycle_name: &str,
         circuit_breaker_threshold: u32,
+        log_entries: &[CycleOutcome],
     ) -> Result<CycleResult> {
-        let prepared = self.prepare(cycle_name)?;
+        let prepared = self.prepare_with_context(cycle_name, log_entries)?;
         let cmd = build_command(&prepared.prompt, &prepared.permissions);
         let display = CycleDisplay::new(cycle_name);
 
@@ -346,10 +366,29 @@ permissions = []
     }
 
     #[test]
-    fn test_prepare_returns_cycle_prompt() {
+    fn test_prepare_returns_cycle_prompt_with_context_injected() {
+        // coding has context = "summaries", so even with empty log the prompt
+        // should have the context block prepended
         let executor = CycleExecutor::new(test_config());
         let prepared = executor.prepare("coding").unwrap();
-        assert_eq!(prepared.prompt, "You are Flow's coding cycle.");
+        assert!(
+            prepared.prompt.contains("You are Flow's coding cycle."),
+            "Original prompt should be present: {}",
+            prepared.prompt
+        );
+        assert!(
+            prepared.prompt.contains("Previous Iteration Summaries"),
+            "Context header should be prepended: {}",
+            prepared.prompt
+        );
+    }
+
+    #[test]
+    fn test_prepare_none_context_returns_raw_prompt() {
+        // review has context = "none" (default), so prompt should be unchanged
+        let executor = CycleExecutor::new(test_config());
+        let prepared = executor.prepare("review").unwrap();
+        assert_eq!(prepared.prompt, "You are Flow's review cycle.");
     }
 
     #[test]
@@ -365,6 +404,61 @@ permissions = []
                 "Bash(cargo test *)",
             ]
         );
+    }
+
+    // --- prepare_with_context tests ---
+
+    fn make_outcome(iteration: u32, cycle: &str, outcome: &str) -> crate::log::jsonl::CycleOutcome {
+        crate::log::jsonl::CycleOutcome {
+            iteration,
+            cycle: cycle.to_string(),
+            timestamp: chrono::Utc::now(),
+            outcome: outcome.to_string(),
+            files_changed: vec![],
+            tests_passed: 0,
+            duration_secs: 60,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+        }
+    }
+
+    #[test]
+    fn test_prepare_with_context_injects_summaries() {
+        let executor = CycleExecutor::new(test_config());
+        let log = vec![make_outcome(1, "review", "Code looked good")];
+        let prepared = executor.prepare_with_context("coding", &log).unwrap();
+        // coding has context = "summaries"
+        assert!(
+            prepared.prompt.contains("Code looked good"),
+            "Summary outcome should be injected: {}",
+            prepared.prompt
+        );
+        assert!(
+            prepared.prompt.contains("You are Flow's coding cycle."),
+            "Original prompt must be present: {}",
+            prepared.prompt
+        );
+    }
+
+    #[test]
+    fn test_prepare_with_context_none_mode_ignores_log() {
+        let executor = CycleExecutor::new(test_config());
+        let log = vec![make_outcome(1, "coding", "Implemented something")];
+        let prepared = executor.prepare_with_context("review", &log).unwrap();
+        // review has context = "none" (default)
+        assert_eq!(
+            prepared.prompt, "You are Flow's review cycle.",
+            "No context should be injected for none mode"
+        );
+    }
+
+    #[test]
+    fn test_prepare_with_context_rejects_unknown_cycle() {
+        let executor = CycleExecutor::new(test_config());
+        let result = executor.prepare_with_context("nonexistent", &[]);
+        assert!(result.is_err());
     }
 
     #[test]
