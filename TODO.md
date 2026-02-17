@@ -27,6 +27,16 @@
   - Priority: P1
   - Description: Each step can have its own permissions (additive on top of cycle + global).
 
+- [ ] Add plan + plan-review steps to coding cycle
+  - Priority: P1
+  - Depends on: step executor (multi-step cycles)
+  - Description: Extend `cycles.toml` coding cycle into a multi-step cycle: (1) **plan** step — architect reads TODO.md and writes an implementation plan to `.flow/current-plan.md` (read + edit plan file only, no src writes); (2) **plan-review** step — reads the plan, writes approval/feedback to `.flow/plan-review.md`. The step executor calls `execute_with_display()` for each step, collects `CycleResult`, and checks the result before proceeding to the implement step. Intermediate artifacts stay on filesystem for inspectability (consistent with plan 003 design).
+
+- [ ] Step-level routing: LLM-driven next-step selection
+  - Priority: P1
+  - Depends on: step executor (multi-step cycles)
+  - Description: After each step completes, determine the next step to run. Default is `sequential` (proceed to the next step in TOML order). For steps that need conditional branching, allow an optional `router = "llm"` field in TOML: the step executor posts the completed step's `result_text` + the cycle's available step names to a model (same pattern as the cycle selector in `src/cycle/selector.rs`), and gets back a next-step name. This handles plan-review (approve → implement, block → plan), test steps (pass → proceed, fail → fix), security review (clean/warnings/critical → different paths), and any future multi-outcome structure — without hard-coding keyword signals. The router response should include a reason (loggable). Enforce a `max_visits` cap per step (default 3) to prevent infinite loops. Steps without `router` always proceed sequentially (backward compatible).
+
 ### Outcome Data Completeness
 - [ ] Populate `files_changed` from stream data or git diff
   - Priority: P1
