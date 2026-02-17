@@ -163,24 +163,30 @@ fn check_cycle_health(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
             });
         }
 
-        // Check for high cost anomalies (> $5 per cycle)
-        for outcome in outcomes {
-            if let Some(cost) = outcome.total_cost_usd {
-                if cost > 5.0 {
-                    findings.push(Finding {
-                        severity: Severity::Warning,
-                        code: "D003".to_string(),
-                        message: format!(
-                            "Cycle '{}' iteration {} cost ${:.2} (high)",
-                            cycle_name, outcome.iteration, cost
-                        ),
-                        suggestion: Some(
-                            "Consider breaking the task into smaller subtasks or adding constraints to the prompt."
-                                .to_string(),
-                        ),
-                    });
-                }
-            }
+        // Check for high cost anomalies (> $5 per cycle run)
+        let high_cost_runs: Vec<_> = outcomes
+            .iter()
+            .filter_map(|o| o.total_cost_usd.filter(|&c| c > 5.0))
+            .collect();
+        if !high_cost_runs.is_empty() {
+            let max_cost = high_cost_runs
+                .iter()
+                .copied()
+                .fold(f64::NEG_INFINITY, f64::max);
+            #[allow(clippy::cast_precision_loss)]
+            let avg_cost: f64 = high_cost_runs.iter().sum::<f64>() / high_cost_runs.len() as f64;
+            findings.push(Finding {
+                severity: Severity::Warning,
+                code: "D003".to_string(),
+                message: format!(
+                    "Cycle '{cycle_name}' had {} run(s) exceeding $5.00 (max ${max_cost:.2}, avg ${avg_cost:.2})",
+                    high_cost_runs.len()
+                ),
+                suggestion: Some(
+                    "Consider breaking the task into smaller subtasks or adding constraints to the prompt."
+                        .to_string(),
+                ),
+            });
         }
     }
 }
@@ -374,12 +380,10 @@ min_interval = 3
         let entry = make_outcome(1, "coding", "done");
 
         let report = diagnose(&config, &[entry]);
-        let d001_findings: Vec<_> = report
-            .findings
-            .iter()
-            .filter(|f| f.code == "D001")
-            .collect();
-        assert!(d001_findings.is_empty());
+        assert!(
+            !report.findings.iter().any(|f| f.code == "D001"),
+            "Should have no D001 findings when there are no denials"
+        );
     }
 
     #[test]
@@ -423,6 +427,19 @@ min_interval = 3
     }
 
     #[test]
+    fn test_d002_no_warning_for_single_failure() {
+        let config = basic_config();
+        let log = vec![make_outcome(1, "coding", "Failed with exit code 1")];
+
+        let report = diagnose(&config, &log);
+        let d002 = report.findings.iter().find(|f| f.code == "D002");
+        assert!(
+            d002.is_none(),
+            "Should not warn with only 1 run (needs >= 2)"
+        );
+    }
+
+    #[test]
     fn test_d002_no_warning_when_mostly_successful() {
         let config = basic_config();
         let log = vec![
@@ -447,7 +464,47 @@ min_interval = 3
         let report = diagnose(&config, &[entry]);
         let d003 = report.findings.iter().find(|f| f.code == "D003");
         assert!(d003.is_some(), "Should detect high cost");
+        assert!(d003.unwrap().message.contains("1 run(s)"));
         assert!(d003.unwrap().message.contains("$7.50"));
+    }
+
+    #[test]
+    fn test_d003_no_warning_at_exactly_five_dollars() {
+        let config = basic_config();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.total_cost_usd = Some(5.0);
+
+        let report = diagnose(&config, &[entry]);
+        let d003 = report.findings.iter().find(|f| f.code == "D003");
+        assert!(
+            d003.is_none(),
+            "Should not warn at exactly $5.00 (threshold is >$5)"
+        );
+    }
+
+    #[test]
+    fn test_d003_aggregates_multiple_high_cost_runs() {
+        let config = basic_config();
+        let mut entry1 = make_outcome(1, "coding", "done");
+        entry1.total_cost_usd = Some(6.00);
+        let mut entry2 = make_outcome(2, "coding", "done");
+        entry2.total_cost_usd = Some(8.00);
+        let mut entry3 = make_outcome(3, "coding", "done");
+        entry3.total_cost_usd = Some(3.00); // normal cost, should not be counted
+
+        let report = diagnose(&config, &[entry1, entry2, entry3]);
+        let d003_findings: Vec<_> = report
+            .findings
+            .iter()
+            .filter(|f| f.code == "D003")
+            .collect();
+        assert_eq!(
+            d003_findings.len(),
+            1,
+            "Should produce one aggregated finding, not one per run"
+        );
+        assert!(d003_findings[0].message.contains("2 run(s)"));
+        assert!(d003_findings[0].message.contains("$8.00")); // max
     }
 
     #[test]
