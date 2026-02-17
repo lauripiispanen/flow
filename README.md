@@ -7,19 +7,19 @@
 
 ## Overview
 
-Flow is a Rust-based orchestrator that enables automated, iterative software development by coordinating Claude Code CLI invocations. Each iteration executes a configurable pipeline (e.g., Plan → Implement → Test) in a fresh context, allowing for focused, incremental progress.
+Flow is a Rust-based orchestrator that enables automated, iterative software development by coordinating Claude Code CLI invocations. Each iteration executes a named **cycle** (e.g., coding, gardening, review) in a fresh context, allowing for focused, incremental progress.
 
 ### Key Features
 
-- **Configurable Pipelines**: Define custom sequences of steps tailored to your project
-- **Variable Cadence**: Run different steps at different frequencies (e.g., refactor every 5 iterations)
-- **Context Reset**: Each iteration starts fresh via new Claude Code CLI invocation
-- **Autonomous Operation**: Agent-driven task selection from TODO.md and plans/*.md
-- **TDD Native**: Built with test-driven development as a first-class workflow
-
-## Status
-
-🚧 **Under Active Development** - Currently implementing MVP
+- **Named Cycles**: Define purpose-specific cycles (coding, gardening, review, planning) in a single TOML config
+- **Multi-Iteration Loops**: Run many iterations back-to-back with `--max-iterations`
+- **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state
+- **Dependency Triggers**: Cycles can auto-trigger after others (e.g., gardening after coding) with configurable minimum intervals
+- **Additive Permissions**: Global + cycle-specific permissions merged and passed to Claude Code as `--allowedTools`
+- **Live Status Bar**: Color-coded health display during execution showing turns, cost, and errors
+- **JSONL Logging**: Every cycle outcome is logged to `.flow/log.jsonl` with cost, turns, denials, and timing
+- **Diagnostics**: `flow doctor` analyzes config and log history for permission issues, high costs, and configuration lint
+- **Circuit Breaker**: Kills runaway cycles after repeated consecutive tool errors
 
 ## Quick Start
 
@@ -39,91 +39,138 @@ cargo build --release
 ### Usage
 
 ```bash
-# Run a single iteration on a task
-cargo run -- --task "Create a function that adds two numbers"
+# Run a single named cycle
+flow --cycle coding
 
-# Run multiple iterations (future)
-cargo run -- --iterations 20
+# Run 10 iterations of the same cycle
+flow --cycle coding --max-iterations 10
 
-# Execute a specific plan (future)
-cargo run -- --plan plans/001-mvp.md
+# Run 10 iterations with AI-driven cycle selection
+flow --max-iterations 10
+
+# Run diagnostics on config and history
+flow doctor
+
+# Use a custom config path
+flow --cycle coding --config my-cycles.toml
 ```
 
-## Development
+### CLI Reference
 
-### Setup
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cycle <name>` | — | Cycle to execute (optional with `--max-iterations > 1`) |
+| `--config <path>` | `cycles.toml` | Path to configuration file |
+| `--log-dir <path>` | `.flow` | Directory for JSONL log output |
+| `--max-iterations <n>` | `1` | Number of iterations to run |
+| `--todo <path>` | `TODO.md` | Path to TODO.md for AI cycle selector context |
 
-```bash
-# Install dependencies
-cargo build
+| Subcommand | Description |
+|------------|-------------|
+| `doctor` | Analyze config and log history, report findings by severity |
 
-# Run tests
-cargo test-all
+## Configuration
 
-# Run linter
-cargo clippy-all
+Flow is configured via a TOML file (default: `cycles.toml`).
 
-# Format code
-cargo fmt
+```toml
+[global]
+permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Bash(cargo *)"]
+max_permission_denials = 10        # Kill cycle after this many total denials
+circuit_breaker_repeated = 5       # Kill cycle after N consecutive tool errors
+
+[[cycle]]
+name = "coding"
+description = "Pick a task from TODO.md, implement with TDD"
+prompt = """
+Your coding prompt here...
+"""
+permissions = ["Edit(./TODO.md)", "Bash(git *)"]   # Added to global permissions
+after = []                                          # No auto-trigger dependencies
+context = "summaries"                               # Log context: "full", "summaries", or "none"
+
+[[cycle]]
+name = "gardening"
+description = "Refactoring, cleanup, dependency updates"
+prompt = """
+Your gardening prompt here...
+"""
+permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
+after = ["coding"]                                  # Auto-triggers after coding
+min_interval = 3                                    # But only if 3+ iterations since last run
+context = "none"
 ```
 
-### Workflow
+### Permission Format
 
-This project follows strict TDD (Test-Driven Development):
+Permissions use `ToolName` or `ToolName(specifier)` syntax:
 
-1. **Red**: Write failing tests first
-2. **Green**: Implement minimum code to pass tests
-3. **Refactor**: Clean up while keeping tests green
+- Bare tool: `"Read"`, `"Glob"`, `"Grep"`, `"Edit"`, `"Write"`, `"Bash"`
+- With specifier: `"Edit(./src/**)"`, `"Bash(cargo test *)"`, `"Write(./out.txt)"`
 
-### Project Structure
+Cycle permissions are additive — they merge with global permissions and are deduplicated.
+
+## How It Works
+
+1. **Load config** — parse `cycles.toml`, validate cycles and permissions
+2. **Select cycle** — either the fixed `--cycle` name, or AI-selected from log history + TODO.md
+3. **Resolve permissions** — merge global + cycle-specific, deduplicate
+4. **Execute** — spawn `claude` CLI with prompt, stream-JSON output, and allowed tools
+5. **Display** — render live status bar with turn count, cost, and health color
+6. **Log** — append `CycleOutcome` to `.flow/log.jsonl`
+7. **Gate** — check permission denial threshold; abort if exceeded
+8. **Trigger** — find dependent cycles (via `after` + `min_interval` rules)
+9. **Repeat** — loop back to step 2 until `--max-iterations` reached or circuit breaker trips
+
+## Diagnostics
+
+`flow doctor` runs read-only analysis and reports findings at three severity levels:
+
+| Code | Severity | What it checks |
+|------|----------|----------------|
+| D001 | Error | Permission denials in log history |
+| D002 | Warning | Repeated cycle failures |
+| D003 | Warning | High-cost runs (>$5 per cycle) |
+| D004 | Info | Triggered cycles missing `min_interval` |
+| D005 | Warning | Cycles with no permissions at all |
+| D006 | Info | Frequency tuning suggestions |
+
+## Project Structure
 
 ```
 flow/
 ├── src/
-│   ├── main.rs          # CLI entry point
-│   ├── lib.rs           # Public library interface
-│   ├── pipeline.rs      # Pipeline orchestration
-│   ├── claude.rs        # Claude Code CLI integration
-│   └── steps/           # Individual step implementations
-├── tests/               # Integration tests
-├── plans/               # Detailed implementation plans
-├── TODO.md              # Task queue
-└── AGENTS.md            # Agent context (Vercel pattern)
+│   ├── main.rs              # CLI entry point and iteration loop
+│   ├── lib.rs               # Public library re-exports
+│   ├── cycle/
+│   │   ├── config.rs        # TOML config parsing and validation
+│   │   ├── executor.rs      # Cycle execution and stream processing
+│   │   ├── rules.rs         # Dependency triggers and min_interval logic
+│   │   └── selector.rs      # AI-driven cycle selection
+│   ├── claude/
+│   │   ├── cli.rs           # Claude Code command builder
+│   │   ├── permissions.rs   # Permission resolution and merging
+│   │   └── stream.rs        # Stream-JSON event parser
+│   ├── cli/
+│   │   └── display.rs       # Terminal display and status bar
+│   ├── doctor.rs            # Diagnostic engine (D001-D006)
+│   └── log/
+│       └── jsonl.rs         # JSONL logger
+├── tests/                   # Integration tests
+├── cycles.toml              # Cycle configuration
+├── TODO.md                  # Task queue
+└── AGENTS.md                # Agent context
 ```
 
-## Architecture
+## Development
 
-Flow operates on a simple model:
-
-1. **Agent** analyzes TODO.md and plans/*.md to select next task
-2. **Pipeline** executes configured sequence of steps
-3. **Steps** invoke Claude Code CLI with appropriate prompts
-4. **Results** are captured and aggregated
-5. Process repeats for next iteration
-
-See [AGENTS.md](./AGENTS.md) for detailed architecture documentation.
-
-## Contributing
-
-This project is currently in early development. Contributions welcome once MVP is stable!
+```bash
+cargo build          # Build
+cargo test           # Run all tests
+cargo clippy         # Lint
+cargo fmt            # Format
+```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
-
-## Inspiration
-
-- [Vercel's AGENTS.md pattern](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals)
-- Test-Driven Development methodology
-- Agentic coding workflows
-
-## Roadmap
-
-- [x] Project structure and TDD setup
-- [ ] MVP: Core pipeline runner (in progress)
-- [ ] Configuration file support (YAML/TOML)
-- [ ] Multi-iteration loops
-- [ ] State persistence
-- [ ] Step cadence system
-- [ ] Error recovery and retry logic
-- [ ] Observability and logging
