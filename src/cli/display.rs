@@ -164,6 +164,58 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     }
 }
 
+/// Render a diagnostic report as a human-readable string.
+///
+/// Formats findings by severity with codes, messages, and suggestions.
+/// Returns a summary line at the end with counts.
+#[must_use]
+pub fn render_diagnostic_report(report: &crate::doctor::DiagnosticReport) -> String {
+    use crate::doctor::Severity;
+
+    if report.is_clean() {
+        return "No issues found. Your Flow configuration looks healthy.".to_string();
+    }
+
+    let mut lines = Vec::new();
+
+    for finding in &report.findings {
+        let prefix = match finding.severity {
+            Severity::Error => "ERROR",
+            Severity::Warning => "WARN ",
+            Severity::Info => "INFO ",
+        };
+        lines.push(format!("[{prefix}] {}: {}", finding.code, finding.message));
+        if let Some(ref suggestion) = finding.suggestion {
+            lines.push(format!("       Fix: {suggestion}"));
+        }
+    }
+
+    // Summary line
+    let errors = report.error_count();
+    let warnings = report.warning_count();
+    let infos = report.info_count();
+    let mut summary_parts = Vec::new();
+    if errors > 0 {
+        summary_parts.push(format!(
+            "{errors} error{}",
+            if errors == 1 { "" } else { "s" }
+        ));
+    }
+    if warnings > 0 {
+        summary_parts.push(format!(
+            "{warnings} warning{}",
+            if warnings == 1 { "" } else { "s" }
+        ));
+    }
+    if infos > 0 {
+        summary_parts.push(format!("{infos} info"));
+    }
+    lines.push(String::new());
+    lines.push(format!("Summary: {}", summary_parts.join(", ")));
+
+    lines.join("\n")
+}
+
 /// Health color for the status bar
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthColor {
@@ -571,6 +623,76 @@ mod tests {
             });
         }
         let _ = status.render_colored();
+    }
+
+    // --- Doctor display tests ---
+
+    #[test]
+    fn test_render_diagnostic_report_clean() {
+        use crate::doctor::DiagnosticReport;
+
+        let report = DiagnosticReport { findings: vec![] };
+        let output = render_diagnostic_report(&report);
+        assert!(output.contains("No issues found"));
+    }
+
+    #[test]
+    fn test_render_diagnostic_report_with_findings() {
+        use crate::doctor::{DiagnosticReport, Finding, Severity};
+
+        let report = DiagnosticReport {
+            findings: vec![
+                Finding {
+                    severity: Severity::Error,
+                    code: "D001".to_string(),
+                    message: "Permission denied for Edit".to_string(),
+                    suggestion: Some("Add Edit(./src/**) to permissions".to_string()),
+                },
+                Finding {
+                    severity: Severity::Warning,
+                    code: "D002".to_string(),
+                    message: "Cycle 'coding' failed 3/4 times".to_string(),
+                    suggestion: None,
+                },
+                Finding {
+                    severity: Severity::Info,
+                    code: "D004".to_string(),
+                    message: "Consider setting min_interval".to_string(),
+                    suggestion: Some("Add min_interval = 3".to_string()),
+                },
+            ],
+        };
+        let output = render_diagnostic_report(&report);
+        assert!(output.contains("D001"));
+        assert!(output.contains("Permission denied"));
+        assert!(output.contains("D002"));
+        assert!(output.contains("D004"));
+        assert!(output.contains("Add Edit(./src/**) to permissions"));
+    }
+
+    #[test]
+    fn test_render_diagnostic_report_summary_counts() {
+        use crate::doctor::{DiagnosticReport, Finding, Severity};
+
+        let report = DiagnosticReport {
+            findings: vec![
+                Finding {
+                    severity: Severity::Error,
+                    code: "E1".to_string(),
+                    message: "err".to_string(),
+                    suggestion: None,
+                },
+                Finding {
+                    severity: Severity::Warning,
+                    code: "W1".to_string(),
+                    message: "warn".to_string(),
+                    suggestion: None,
+                },
+            ],
+        };
+        let output = render_diagnostic_report(&report);
+        assert!(output.contains("1 error"));
+        assert!(output.contains("1 warning"));
     }
 
     #[test]

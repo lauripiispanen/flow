@@ -265,6 +265,7 @@ async fn test_gardening_auto_triggers_after_coding() {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let dep_outcome = CycleOutcome {
@@ -278,6 +279,7 @@ async fn test_gardening_auto_triggers_after_coding() {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
         logger.append(&dep_outcome).unwrap();
         iteration += 1;
@@ -357,6 +359,7 @@ async fn test_multiple_iterations_logged() {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
 
         let outcome = CycleOutcome {
@@ -370,6 +373,7 @@ async fn test_multiple_iterations_logged() {
             num_turns: None,
             total_cost_usd: None,
             permission_denial_count: None,
+            permission_denials: None,
         };
         logger.append(&outcome).unwrap();
     }

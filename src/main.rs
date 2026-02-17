@@ -8,12 +8,15 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use colored::Colorize;
 
 use flow::claude::stream::suggest_permission_fix;
+use flow::cli::render_diagnostic_report;
 use flow::cycle::config::FlowConfig;
 use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
+use flow::doctor::diagnose;
 use flow::log::jsonl::JsonlLogger;
 use flow::log::CycleOutcome;
 
@@ -24,9 +27,9 @@ use flow::log::CycleOutcome;
 #[derive(Parser, Debug)]
 #[command(name = "flow", version, about)]
 struct Cli {
-    /// Name of the cycle to execute
+    /// Name of the cycle to execute (shorthand for `flow run --cycle <name>`)
     #[arg(long)]
-    cycle: String,
+    cycle: Option<String>,
 
     /// Path to the cycles.toml configuration file
     #[arg(long, default_value = "cycles.toml")]
@@ -35,6 +38,21 @@ struct Cli {
     /// Directory for log files (.flow by default)
     #[arg(long, default_value = ".flow")]
     log_dir: PathBuf,
+
+    /// Maximum number of iterations to run (default: 1)
+    #[arg(long, default_value = "1")]
+    max_iterations: u32,
+
+    /// Subcommand to run
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+/// Available subcommands
+#[derive(Subcommand, Debug, PartialEq, Eq)]
+enum Command {
+    /// Run diagnostics on your Flow configuration and log history
+    Doctor,
 }
 
 /// Format an exit code for display, returning "unknown" if the process was killed by signal.
@@ -116,15 +134,25 @@ async fn execute_and_log(
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Handle subcommands
+    if cli.command == Some(Command::Doctor) {
+        return run_doctor(&cli);
+    }
+
+    // Require --cycle when not using a subcommand
+    let cycle_name = cli.cycle.ok_or_else(|| {
+        anyhow::anyhow!("Missing --cycle argument. Usage: flow --cycle <name> or flow doctor")
+    })?;
+
     // Load configuration
     let config = FlowConfig::from_path(&cli.config)
         .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
 
     // Validate the requested cycle exists
-    config.get_cycle(&cli.cycle).with_context(|| {
+    config.get_cycle(&cycle_name).with_context(|| {
         format!(
             "Unknown cycle '{}'. Available cycles: {}",
-            cli.cycle,
+            cycle_name,
             available_cycle_names(&config)
         )
     })?;
@@ -135,19 +163,46 @@ async fn main() -> Result<()> {
     let executor = CycleExecutor::new(config.clone());
     let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
     let mut iteration: u32 = 1;
+    let max_iterations = cli.max_iterations;
 
-    // Execute the requested cycle
-    let result = execute_and_log(
-        &executor,
-        &logger,
-        &cli.cycle,
-        &mut iteration,
-        circuit_breaker,
-    )
-    .await?;
+    if max_iterations > 1 {
+        eprintln!(
+            "Starting multi-iteration run: up to {max_iterations} iterations of '{cycle_name}'"
+        );
+    }
 
-    // Auto-trigger dependent cycles if the primary cycle succeeded
-    if result.success {
+    // Main iteration loop
+    loop {
+        if iteration > max_iterations {
+            break;
+        }
+
+        if max_iterations > 1 {
+            eprintln!(
+                "\n{} Iteration {iteration}/{max_iterations}",
+                ">>>".bold().cyan()
+            );
+        }
+
+        // Execute the requested cycle
+        let result = execute_and_log(
+            &executor,
+            &logger,
+            &cycle_name,
+            &mut iteration,
+            circuit_breaker,
+        )
+        .await?;
+
+        // Stop on failure
+        if !result.success {
+            eprintln!(
+                "Cycle '{cycle_name}' failed in iteration {}, stopping.",
+                iteration - 1
+            );
+            std::process::exit(result.exit_code.unwrap_or(1));
+        }
+
         // Between-cycle gate: stop if too many permission denials
         check_denial_gate(
             result.permission_denial_count.unwrap_or(0),
@@ -155,7 +210,7 @@ async fn main() -> Result<()> {
             &result.cycle_name,
         );
 
-        // Read log history for frequency-aware triggering
+        // Auto-trigger dependent cycles
         let log_entries = logger
             .read_all()
             .context("Failed to read log for frequency check")?;
@@ -185,12 +240,30 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Exit with appropriate code
-    if result.success {
-        Ok(())
-    } else {
-        std::process::exit(result.exit_code.unwrap_or(1));
+    if max_iterations > 1 {
+        eprintln!("\nCompleted {max_iterations} iteration(s) of '{cycle_name}'");
     }
+
+    Ok(())
+}
+
+/// Run the `flow doctor` diagnostic command.
+fn run_doctor(cli: &Cli) -> Result<()> {
+    let config = FlowConfig::from_path(&cli.config)
+        .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
+
+    let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
+    let log_entries = logger.read_all().unwrap_or_default();
+
+    let report = diagnose(&config, &log_entries);
+    let output = render_diagnostic_report(&report);
+    eprintln!("{output}");
+
+    if report.error_count() > 0 {
+        std::process::exit(1);
+    }
+
+    Ok(())
 }
 
 /// Format available cycle names for error messages.
@@ -343,5 +416,33 @@ prompt = "Garden"
 
         let names = available_cycle_names(&config);
         assert_eq!(names, "coding, gardening");
+    }
+
+    #[test]
+    fn test_cli_parses_max_iterations() {
+        let cli =
+            Cli::try_parse_from(["flow", "--cycle", "coding", "--max-iterations", "5"]).unwrap();
+        assert_eq!(cli.max_iterations, 5);
+        assert_eq!(cli.cycle.as_deref(), Some("coding"));
+    }
+
+    #[test]
+    fn test_cli_max_iterations_defaults_to_one() {
+        let cli = Cli::try_parse_from(["flow", "--cycle", "coding"]).unwrap();
+        assert_eq!(cli.max_iterations, 1);
+    }
+
+    #[test]
+    fn test_cli_parses_doctor_subcommand() {
+        let cli = Cli::try_parse_from(["flow", "doctor"]).unwrap();
+        assert!(matches!(cli.command, Some(Command::Doctor)));
+        assert!(cli.cycle.is_none());
+    }
+
+    #[test]
+    fn test_cli_parses_cycle_flag() {
+        let cli = Cli::try_parse_from(["flow", "--cycle", "coding"]).unwrap();
+        assert_eq!(cli.cycle.as_deref(), Some("coding"));
+        assert!(cli.command.is_none());
     }
 }

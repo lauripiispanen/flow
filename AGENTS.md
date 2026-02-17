@@ -79,11 +79,11 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 ## Current Status
 
 **Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
-**In Progress**: Phase 2 implementation (status bar, flow doctor, multi-iteration loop, cycle selector)
-**Next**: flow doctor CLI wiring → multi-iteration loop → flow init → flow plan → cycle selector
+**In Progress**: Phase 2 implementation (cycle selector, multi-step cycles, flow init, flow plan)
+**Next**: flow init → flow plan → cycle selector → multi-step cycles
 
 **Test Status**:
-- ✅ 165 passing (151 lib + 8 main + 6 integration)
+- ✅ 172 passing (154 lib + 12 main + 6 integration)
 
 **Component Status**:
 ```
@@ -92,11 +92,11 @@ Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
 Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
 Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
 Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
-Rich CLI Display      | ✅ | src/cli/display.rs (25 tests, includes status bar + health colors)
+Rich CLI Display      | ✅ | src/cli/display.rs (28 tests, includes status bar + health colors + doctor display)
 JSONL Logger          | ✅ | src/log/jsonl.rs (12 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
 Doctor Diagnostics    | ✅ | src/doctor.rs (14 tests)
-CLI Interface         | ✅ | src/main.rs (5 tests, rich display + safeguards)
+CLI Interface         | ✅ | src/main.rs (12 tests, rich display + safeguards + doctor + max-iterations)
 cycles.toml           | ✅ | cycles.toml (coding + gardening, corrected perms)
 Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
 Runtime Safeguards    | ✅ | circuit breaker + between-cycle gate
@@ -256,4 +256,4 @@ All Phase 2 tasks have specs in TODO.md.
 
 ---
 
-**Last Updated**: 2026-02-16 | **Status**: Phase 1 complete, Phase 2 in progress (frequency constraints done) | **Next Milestone**: Multi-step cycles + cycle selector
+**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (doctor + multi-iteration done) | **Next Milestone**: Cycle selector + multi-step cycles

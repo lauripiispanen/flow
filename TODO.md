@@ -279,14 +279,27 @@
   - Priority: P0
 
 ### Multi-Iteration Loop
-- [ ] Implement `--max-iterations` support
+- [x] Implement `--max-iterations` support
+  - Status: Completed
   - Priority: P0
+  - Description: Added `--max-iterations` CLI flag (default: 1). When >1, flow loops executing the specified cycle up to N times with auto-triggering of dependent cycles after each iteration.
+  - Files: `src/main.rs`
+  - Tests: 2 new tests (CLI parsing, default value)
+  - Completed: 2026-02-17
 
-- [ ] Iteration counter and loop control
+- [x] Iteration counter and loop control
+  - Status: Completed
   - Priority: P0
+  - Description: Main execution loop tracks iteration count, prints progress headers for multi-iteration runs.
+  - Files: `src/main.rs`
+  - Completed: 2026-02-17
 
-- [ ] Stop conditions (max iterations, errors)
+- [x] Stop conditions (max iterations, errors)
+  - Status: Completed
   - Priority: P0
+  - Description: Loop stops on: max iterations reached, cycle failure (exit with failure code), or between-cycle denial gate threshold exceeded.
+  - Files: `src/main.rs`
+  - Completed: 2026-02-17
 
 ### Iteration Context
 - [ ] Implement context modes (full, summaries, none)
@@ -380,7 +393,15 @@
   - Files: `src/doctor.rs` (new), `src/lib.rs`
   - Tests: 14 new tests
   - Completed: 2026-02-16
-  - Note: CLI wiring (`flow doctor` subcommand) still needed — this implements the core diagnostic logic.
+  - Note: CLI wiring completed in separate task below.
+
+- [x] Wire `flow doctor` subcommand into CLI
+  - Status: Completed
+  - Priority: P0
+  - Description: Added `flow doctor` as a clap subcommand. Loads config and log, runs `diagnose()`, renders findings with `render_diagnostic_report()`. Exits with code 1 if errors found. Also added `render_diagnostic_report()` display function with severity-prefixed output and summary counts.
+  - Files: `src/main.rs`, `src/cli/display.rs`, `src/cli/mod.rs`, `src/lib.rs`
+  - Tests: 5 new tests (3 display rendering + 2 CLI parsing)
+  - Completed: 2026-02-17
 
 - [x] Store full `permission_denials` list in `CycleOutcome` (not just count)
   - Status: Completed
@@ -465,6 +486,20 @@
 ---
 
 ## ✅ Completed
+
+### 2026-02-17 - Doctor CLI Wiring & Multi-Iteration Loop
+
+**Completed:**
+- [x] Wire `flow doctor` subcommand into CLI (display + subcommand routing)
+- [x] Implement `--max-iterations` support with iteration loop, counter, and stop conditions
+- [x] Fix integration test compilation (add missing `permission_denials` field)
+
+**Implementation:**
+- Files: `src/main.rs`, `src/cli/display.rs`, `src/cli/mod.rs`, `src/lib.rs`, `tests/integration_test.rs`
+- New functions: `render_diagnostic_report()`, `run_doctor()`, `Command` enum
+- CLI changes: `--cycle` is now optional (required only when not using a subcommand), added `--max-iterations` (default: 1), added `doctor` subcommand
+- Tests: 7 new tests (3 display + 2 CLI parsing + 2 max-iterations), 172 total (154 lib + 12 main + 6 integration)
+- Multi-iteration loop: executes cycle N times, auto-triggers dependents after each, stops on failure or denial gate
 
 ### 2026-02-16 - Flow Doctor Diagnostic Engine & Permission Denials
 
