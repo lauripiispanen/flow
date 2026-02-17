@@ -35,7 +35,7 @@ prompt = """
 You are Flow's review cycle. Follow the /review skill workflow.
 """
 permissions = []
-after = ["coding"]
+after = []
 min_interval = 2
 context = "summaries"
 

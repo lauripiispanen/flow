@@ -218,7 +218,7 @@ async fn execute_and_log(
 
 /// Apply post-cycle checks: record outcome, check failure gate, denial gate, health check.
 ///
-/// Returns `true` if the run should stop (failure or health violation), `false` to continue.
+/// Exits the process if any gate fires. Returns normally if the run should continue.
 fn apply_cycle_gates(
     result: &flow::CycleResult,
     cycle_name: &str,
@@ -226,7 +226,7 @@ fn apply_cycle_gates(
     max_denials: u32,
     max_consecutive_failures: u32,
     iteration: u32,
-) -> bool {
+) {
     run_history.push(RunOutcome {
         success: result.success,
     });
@@ -246,8 +246,6 @@ fn apply_cycle_gates(
         eprintln!("{reason}");
         std::process::exit(1);
     }
-
-    false
 }
 
 #[tokio::main]

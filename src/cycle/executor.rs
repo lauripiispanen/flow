@@ -843,12 +843,9 @@ permissions = ["Edit(./src/**)"]
 
     #[test]
     fn test_is_multi_step_cycle_false_for_single_step() {
-        let executor = CycleExecutor::new(test_config());
         let config = test_config();
         let cycle = config.get_cycle("coding").unwrap();
         assert!(!cycle.is_multi_step());
-        // Keep executor in scope to avoid unused variable warning
-        drop(executor);
     }
 
     // --- run_command_with_display tests ---
