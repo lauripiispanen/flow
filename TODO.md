@@ -66,9 +66,11 @@
   - Priority: P1
   - Description: Auto-apply safe fixes (add missing permissions, set recommended min_interval). Non-destructive only.
 
-- [ ] `flow init` — scaffold cycles.toml + .flow/ for new projects
+- [x] `flow init` — scaffold cycles.toml + .flow/ for new projects
   - Priority: P1
   - Description: Static template with coding + gardening cycles and reasonable global permissions.
+  - Completed: 2026-02-17
+  - Components: `src/init.rs` (new) with `init()` fn + `CYCLES_TOML_TEMPLATE`, `Init` subcommand in main.rs, `run_init()` handler. 13 lib tests + 1 main test.
 
 - [ ] `flow plan '<idea>'` — quick idea capture
   - Priority: P1

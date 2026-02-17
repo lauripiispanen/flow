@@ -10,6 +10,7 @@ pub mod claude;
 pub mod cli;
 pub mod cycle;
 pub mod doctor;
+pub mod init;
 pub mod log;
 
 // Re-export commonly used types

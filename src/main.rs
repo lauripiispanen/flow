@@ -18,6 +18,7 @@ use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
 use flow::cycle::selector::select_cycle;
 use flow::doctor::diagnose;
+use flow::init::init;
 use flow::log::jsonl::JsonlLogger;
 use flow::log::CycleOutcome;
 
@@ -58,6 +59,8 @@ struct Cli {
 enum Command {
     /// Run diagnostics on your Flow configuration and log history
     Doctor,
+    /// Initialize a new Flow project (creates cycles.toml and .flow/)
+    Init,
 }
 
 /// Format an exit code for display, returning "unknown" if the process was killed by signal.
@@ -256,6 +259,9 @@ async fn main() -> Result<()> {
     if cli.command == Some(Command::Doctor) {
         return run_doctor(&cli);
     }
+    if cli.command == Some(Command::Init) {
+        return run_init();
+    }
 
     // Load configuration
     let config = FlowConfig::from_path(&cli.config)
@@ -368,6 +374,20 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Run the `flow init` command — scaffold a new project.
+fn run_init() -> Result<()> {
+    let project_dir = std::env::current_dir().context("Failed to determine current directory")?;
+    init(&project_dir)?;
+    eprintln!("Initialized Flow project:");
+    eprintln!("  Created cycles.toml   — cycle definitions (edit to customize)");
+    eprintln!("  Created .flow/        — runtime state directory");
+    eprintln!();
+    eprintln!("Next steps:");
+    eprintln!("  flow --cycle coding   — run a coding cycle");
+    eprintln!("  flow doctor           — check configuration");
     Ok(())
 }
 
@@ -560,6 +580,13 @@ prompt = "Garden"
     fn test_cli_parses_doctor_subcommand() {
         let cli = Cli::try_parse_from(["flow", "doctor"]).unwrap();
         assert!(matches!(cli.command, Some(Command::Doctor)));
+        assert!(cli.cycle.is_none());
+    }
+
+    #[test]
+    fn test_cli_parses_init_subcommand() {
+        let cli = Cli::try_parse_from(["flow", "init"]).unwrap();
+        assert!(matches!(cli.command, Some(Command::Init)));
         assert!(cli.cycle.is_none());
     }
 
