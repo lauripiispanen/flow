@@ -94,6 +94,37 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
     }
 }
 
+/// A compact record of one cycle execution within the current run, for health tracking.
+struct RunOutcome {
+    /// Whether the cycle completed successfully
+    success: bool,
+}
+
+/// Check cumulative run health — returns Some(reason) if the run should stop.
+///
+/// Stops if the trailing window of outcomes contains `max_consecutive_failures`
+/// consecutive failures (cycles whose `success == false`). Successes reset the streak.
+fn check_run_health(history: &[RunOutcome], max_consecutive_failures: u32) -> Option<String> {
+    if max_consecutive_failures == 0 {
+        return None;
+    }
+    let mut consecutive = 0u32;
+    for outcome in history {
+        if outcome.success {
+            consecutive = 0;
+        } else {
+            consecutive += 1;
+            if consecutive >= max_consecutive_failures {
+                return Some(format!(
+                    "Stopping run: {consecutive} consecutive cycle failures (threshold: {max_consecutive_failures}). \
+                     Fix the underlying issue before continuing."
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// Check if permission denials exceed the threshold and exit if so.
 fn check_denial_gate(denials: u32, max_denials: u32, cycle_name: &str) {
     if denials > max_denials {
@@ -185,6 +216,40 @@ async fn execute_and_log(
     Ok(result)
 }
 
+/// Apply post-cycle checks: record outcome, check failure gate, denial gate, health check.
+///
+/// Returns `true` if the run should stop (failure or health violation), `false` to continue.
+fn apply_cycle_gates(
+    result: &flow::CycleResult,
+    cycle_name: &str,
+    run_history: &mut Vec<RunOutcome>,
+    max_denials: u32,
+    max_consecutive_failures: u32,
+    iteration: u32,
+) -> bool {
+    run_history.push(RunOutcome {
+        success: result.success,
+    });
+
+    if !result.success {
+        eprintln!("Cycle '{cycle_name}' failed in iteration {iteration}, stopping.");
+        std::process::exit(result.exit_code.unwrap_or(1));
+    }
+
+    check_denial_gate(
+        result.permission_denial_count.unwrap_or(0),
+        max_denials,
+        cycle_name,
+    );
+
+    if let Some(reason) = check_run_health(run_history, max_consecutive_failures) {
+        eprintln!("{reason}");
+        std::process::exit(1);
+    }
+
+    false
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -223,10 +288,12 @@ async fn main() -> Result<()> {
     // Initialize
     let circuit_breaker = config.global.circuit_breaker_repeated;
     let max_denials = config.global.max_permission_denials;
+    let max_consecutive_failures = config.global.max_consecutive_failures;
     let executor = CycleExecutor::new(config.clone());
     let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
     let mut iteration: u32 = 1;
     let max_iterations = cli.max_iterations;
+    let mut run_history: Vec<RunOutcome> = Vec::new();
 
     print_run_banner(max_iterations, fixed_cycle.as_deref(), use_selector);
 
@@ -256,20 +323,13 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        // Stop on failure
-        if !result.success {
-            eprintln!(
-                "Cycle '{cycle_name}' failed in iteration {}, stopping.",
-                iteration - 1
-            );
-            std::process::exit(result.exit_code.unwrap_or(1));
-        }
-
-        // Between-cycle gate: stop if too many permission denials
-        check_denial_gate(
-            result.permission_denial_count.unwrap_or(0),
+        apply_cycle_gates(
+            &result,
+            &cycle_name,
+            &mut run_history,
             max_denials,
-            &result.cycle_name,
+            max_consecutive_failures,
+            iteration - 1,
         );
 
         // Auto-trigger dependent cycles
@@ -288,16 +348,13 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            if !dep_result.success {
-                eprintln!("Dependent cycle '{dep_cycle}' failed, stopping.");
-                std::process::exit(dep_result.exit_code.unwrap_or(1));
-            }
-
-            // Between-cycle gate for dependent cycles too
-            check_denial_gate(
-                dep_result.permission_denial_count.unwrap_or(0),
-                max_denials,
+            apply_cycle_gates(
+                &dep_result,
                 dep_cycle,
+                &mut run_history,
+                max_denials,
+                max_consecutive_failures,
+                iteration - 1,
             );
         }
     }
@@ -534,5 +591,68 @@ prompt = "Garden"
         let cli = Cli::try_parse_from(["flow", "--max-iterations", "10"]).unwrap();
         assert!(cli.cycle.is_none());
         assert_eq!(cli.max_iterations, 10);
+    }
+
+    // --- check_run_health tests ---
+
+    #[test]
+    fn test_run_health_ok_when_all_succeed() {
+        let history = vec![
+            RunOutcome { success: true },
+            RunOutcome { success: true },
+            RunOutcome { success: true },
+        ];
+        assert!(check_run_health(&history, 3).is_none());
+    }
+
+    #[test]
+    fn test_run_health_stops_on_consecutive_failures() {
+        let history = vec![
+            RunOutcome { success: true },
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+        ];
+        // 3 consecutive failures at the end — should stop
+        assert!(check_run_health(&history, 3).is_some());
+    }
+
+    #[test]
+    fn test_run_health_does_not_stop_below_threshold() {
+        let history = vec![RunOutcome { success: false }, RunOutcome { success: false }];
+        // Only 2 consecutive failures, threshold is 3
+        assert!(check_run_health(&history, 3).is_none());
+    }
+
+    #[test]
+    fn test_run_health_resets_on_success() {
+        let history = vec![
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+            RunOutcome { success: true }, // resets the streak
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+        ];
+        // Streak is only 2 (after the success) — should not stop
+        assert!(check_run_health(&history, 3).is_none());
+    }
+
+    #[test]
+    fn test_run_health_empty_history_is_ok() {
+        assert!(check_run_health(&[], 3).is_none());
+    }
+
+    #[test]
+    fn test_run_health_returns_message_with_count() {
+        let history = vec![
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+        ];
+        let msg = check_run_health(&history, 3).unwrap();
+        assert!(
+            msg.contains('3'),
+            "Message should mention failure count: {msg}"
+        );
     }
 }

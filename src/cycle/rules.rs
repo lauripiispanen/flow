@@ -204,6 +204,7 @@ after = ["coding", "testing"]
                 permissions: vec![],
                 max_permission_denials: 10,
                 circuit_breaker_repeated: 5,
+                max_consecutive_failures: 3,
             },
             cycles: vec![],
         };

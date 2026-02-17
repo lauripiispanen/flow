@@ -32,6 +32,9 @@ pub struct GlobalConfig {
     /// Kill subprocess if same tool denied N times in a row (default: 5)
     #[serde(default = "default_circuit_breaker_repeated")]
     pub circuit_breaker_repeated: u32,
+    /// Stop the entire run if this many consecutive cycles fail (default: 3)
+    #[serde(default = "default_max_consecutive_failures")]
+    pub max_consecutive_failures: u32,
 }
 
 const fn default_max_permission_denials() -> u32 {
@@ -40,6 +43,10 @@ const fn default_max_permission_denials() -> u32 {
 
 const fn default_circuit_breaker_repeated() -> u32 {
     5
+}
+
+const fn default_max_consecutive_failures() -> u32 {
+    3
 }
 
 /// A single step within a multi-step cycle

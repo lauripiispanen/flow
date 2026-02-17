@@ -49,9 +49,10 @@
   - Description: Currently always 0. Parse from Bash tool results or run `cargo test` count after cycle.
 
 ### Multi-Cycle Health Tracking
-- [ ] Track cumulative health across iterations
+- [x] Track cumulative health across iterations
   - Priority: P0
   - Description: If N cycles in a row fail or have high denial rates, stop the whole run.
+  - Completed: 2026-02-17
 
 ### Enhanced Observability
 - [ ] Implement .flow/progress.json writer
