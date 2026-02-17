@@ -193,8 +193,7 @@ impl CycleExecutor {
         let mut last_exit_code: Option<i32> = None;
         let mut combined_stderr = String::new();
 
-        let steps = cycle.steps.clone();
-        for step in &steps {
+        for step in &cycle.steps {
             let step_label = format!("{cycle_name}/{}", step.name);
             let mut status_line = StatusLine::new(&step_label);
 
