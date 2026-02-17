@@ -598,6 +598,42 @@ after = ["coding"]
         );
     }
 
+    #[test]
+    fn test_d006_skips_when_min_interval_already_set() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+min_interval = 3
+"#,
+        )
+        .unwrap();
+
+        let log = vec![
+            make_outcome(1, "coding", "done"),
+            make_outcome(2, "gardening", "done"),
+            make_outcome(3, "gardening", "done"),
+        ];
+
+        let report = diagnose(&config, &log);
+        let d006 = report.findings.iter().find(|f| f.code == "D006");
+        assert!(
+            d006.is_none(),
+            "Should not suggest frequency tuning when min_interval > 1 is already set"
+        );
+    }
+
     // --- Ordering ---
 
     #[test]

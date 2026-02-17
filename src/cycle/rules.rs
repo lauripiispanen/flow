@@ -48,7 +48,7 @@ pub fn find_triggered_cycles<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use crate::testutil::make_test_outcome;
 
     const CONFIG_WITH_DEPS: &str = r#"
 [global]
@@ -84,20 +84,7 @@ after = []
     }
 
     fn make_log_entry(iteration: u32, cycle: &str) -> CycleOutcome {
-        CycleOutcome {
-            iteration,
-            cycle: cycle.to_string(),
-            timestamp: Utc::now(),
-            outcome: "done".to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 60,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        }
+        make_test_outcome(iteration, cycle, "done")
     }
 
     #[test]

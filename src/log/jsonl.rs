@@ -162,6 +162,7 @@ impl JsonlLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::make_test_outcome;
     use tempfile::TempDir;
 
     #[test]
@@ -180,20 +181,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let outcome = CycleOutcome {
-            iteration: 1,
-            cycle: "coding".to_string(),
-            timestamp: Utc::now(),
-            outcome: "Implemented basic feature".to_string(),
-            files_changed: vec!["src/main.rs".to_string()],
-            tests_passed: 3,
-            duration_secs: 180,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut outcome = make_test_outcome(1, "coding", "Implemented basic feature");
+        outcome.files_changed = vec!["src/main.rs".to_string()];
+        outcome.tests_passed = 3;
+        outcome.duration_secs = 180;
 
         logger.append(&outcome).unwrap();
 
@@ -205,35 +196,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let outcome1 = CycleOutcome {
-            iteration: 1,
-            cycle: "coding".to_string(),
-            timestamp: Utc::now(),
-            outcome: "First task".to_string(),
-            files_changed: vec!["src/main.rs".to_string()],
-            tests_passed: 3,
-            duration_secs: 180,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut outcome1 = make_test_outcome(1, "coding", "First task");
+        outcome1.files_changed = vec!["src/main.rs".to_string()];
+        outcome1.tests_passed = 3;
+        outcome1.duration_secs = 180;
 
-        let outcome2 = CycleOutcome {
-            iteration: 2,
-            cycle: "gardening".to_string(),
-            timestamp: Utc::now(),
-            outcome: "Updated dependencies".to_string(),
-            files_changed: vec!["Cargo.toml".to_string()],
-            tests_passed: 3,
-            duration_secs: 45,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut outcome2 = make_test_outcome(2, "gardening", "Updated dependencies");
+        outcome2.files_changed = vec!["Cargo.toml".to_string()];
+        outcome2.tests_passed = 3;
+        outcome2.duration_secs = 45;
 
         logger.append(&outcome1).unwrap();
         logger.append(&outcome2).unwrap();
@@ -257,35 +228,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let outcome1 = CycleOutcome {
-            iteration: 1,
-            cycle: "coding".to_string(),
-            timestamp: Utc::now(),
-            outcome: "First task".to_string(),
-            files_changed: vec!["src/main.rs".to_string()],
-            tests_passed: 3,
-            duration_secs: 180,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut outcome1 = make_test_outcome(1, "coding", "First task");
+        outcome1.files_changed = vec!["src/main.rs".to_string()];
+        outcome1.tests_passed = 3;
+        outcome1.duration_secs = 180;
 
-        let outcome2 = CycleOutcome {
-            iteration: 2,
-            cycle: "gardening".to_string(),
-            timestamp: Utc::now(),
-            outcome: "Updated dependencies".to_string(),
-            files_changed: vec!["Cargo.toml".to_string()],
-            tests_passed: 3,
-            duration_secs: 45,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut outcome2 = make_test_outcome(2, "gardening", "Updated dependencies");
+        outcome2.files_changed = vec!["Cargo.toml".to_string()];
+        outcome2.tests_passed = 3;
+        outcome2.duration_secs = 45;
 
         logger.append(&outcome1).unwrap();
         logger.append(&outcome2).unwrap();
@@ -303,23 +254,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let original = CycleOutcome {
-            iteration: 42,
-            cycle: "testing".to_string(),
-            timestamp: Utc::now(),
-            outcome: "All tests pass".to_string(),
-            files_changed: vec![
-                "src/main.rs".to_string(),
-                "tests/integration.rs".to_string(),
-            ],
-            tests_passed: 15,
-            duration_secs: 300,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let mut original = make_test_outcome(42, "testing", "All tests pass");
+        original.files_changed = vec![
+            "src/main.rs".to_string(),
+            "tests/integration.rs".to_string(),
+        ];
+        original.tests_passed = 15;
+        original.duration_secs = 300;
 
         logger.append(&original).unwrap();
 
@@ -422,20 +363,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let outcome = CycleOutcome {
-            iteration: 1,
-            cycle: "coding".to_string(),
-            timestamp: Utc::now(),
-            outcome: "done".to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 60,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let outcome = make_test_outcome(1, "coding", "done");
 
         logger.append(&outcome).unwrap();
 
@@ -449,20 +377,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-        let outcome = CycleOutcome {
-            iteration: 1,
-            cycle: "coding".to_string(),
-            timestamp: Utc::now(),
-            outcome: "done".to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 60,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        };
+        let outcome = make_test_outcome(1, "coding", "done");
 
         logger.append(&outcome).unwrap();
         let content = fs::read_to_string(logger.log_path()).unwrap();

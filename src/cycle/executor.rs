@@ -351,26 +351,10 @@ impl StepAggregator {
             stderr: self.combined_stderr,
             duration_secs: self.total_duration_secs,
             result_text: self.last_result_text,
-            num_turns: if self.total_turns > 0 {
-                Some(self.total_turns)
-            } else {
-                None
-            },
-            total_cost_usd: if self.total_cost > 0.0 {
-                Some(self.total_cost)
-            } else {
-                None
-            },
-            permission_denial_count: if self.total_denials > 0 {
-                Some(self.total_denials)
-            } else {
-                None
-            },
-            permission_denials: if self.all_denials.is_empty() {
-                None
-            } else {
-                Some(self.all_denials)
-            },
+            num_turns: (self.total_turns > 0).then_some(self.total_turns),
+            total_cost_usd: (self.total_cost > 0.0).then_some(self.total_cost),
+            permission_denial_count: (self.total_denials > 0).then_some(self.total_denials),
+            permission_denials: (!self.all_denials.is_empty()).then_some(self.all_denials),
             files_changed: self.all_files_changed,
             tests_passed: self.total_tests_passed,
         }
@@ -466,7 +450,7 @@ async fn run_command_with_display(
 
     // Process stdout line-by-line with stream-JSON parsing
     let mut accumulator = StreamAccumulator::new();
-    let mut consecutive_denials: u32 = 0;
+    let mut consecutive_tool_errors: u32 = 0;
     let mut reader = BufReader::new(child_stdout);
     let mut line_buf = String::new();
 
@@ -486,12 +470,12 @@ async fn run_command_with_display(
             // Circuit breaker: track consecutive tool errors
             match &event {
                 StreamEvent::ToolResult { is_error: true, .. } => {
-                    consecutive_denials += 1;
+                    consecutive_tool_errors += 1;
                     if circuit_breaker_threshold > 0
-                        && consecutive_denials >= circuit_breaker_threshold
+                        && consecutive_tool_errors >= circuit_breaker_threshold
                     {
                         eprintln!(
-                            "Circuit breaker: {consecutive_denials} consecutive tool errors, killing subprocess"
+                            "Circuit breaker: {consecutive_tool_errors} consecutive tool errors, killing subprocess"
                         );
                         let _ = child.kill().await;
                         break;
@@ -501,7 +485,7 @@ async fn run_command_with_display(
                     is_error: false, ..
                 }
                 | StreamEvent::ToolUse { .. } => {
-                    consecutive_denials = 0;
+                    consecutive_tool_errors = 0;
                 }
                 _ => {}
             }
@@ -1086,5 +1070,70 @@ permissions = ["Edit(./src/**)"]
 
         assert!(result.permission_denials.is_none());
         assert_eq!(result.permission_denial_count, Some(0));
+    }
+
+    // --- StepAggregator tests ---
+
+    #[test]
+    fn test_step_aggregator_zero_values_become_none() {
+        let agg = StepAggregator::new();
+        let result = agg.into_cycle_result("test");
+
+        assert!(!result.success);
+        assert!(result.exit_code.is_none());
+        assert!(result.result_text.is_none());
+        assert!(result.num_turns.is_none());
+        assert!(result.total_cost_usd.is_none());
+        assert!(result.permission_denial_count.is_none());
+        assert!(result.permission_denials.is_none());
+        assert!(result.files_changed.is_empty());
+        assert_eq!(result.tests_passed, 0);
+    }
+
+    #[test]
+    fn test_step_aggregator_accumulates_across_steps() {
+        let mut agg = StepAggregator::new();
+
+        // Simulate two steps with results
+        let mut acc1 = StreamAccumulator::new();
+        acc1.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/a.rs"}),
+        });
+        acc1.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Step 1 done".to_string(),
+            num_turns: 5,
+            total_cost_usd: 1.0,
+            duration_ms: 10000,
+            permission_denials: vec!["Bash".to_string()],
+        });
+        agg.accumulate(&acc1, "", Some(0), 30);
+
+        let mut acc2 = StreamAccumulator::new();
+        acc2.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/b.rs"}),
+        });
+        acc2.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Step 2 done".to_string(),
+            num_turns: 3,
+            total_cost_usd: 0.5,
+            duration_ms: 5000,
+            permission_denials: vec![],
+        });
+        agg.accumulate(&acc2, "some error", Some(0), 20);
+
+        let result = agg.into_cycle_result("coding");
+        assert!(result.success);
+        assert_eq!(result.duration_secs, 50);
+        assert_eq!(result.num_turns, Some(8));
+        assert_eq!(result.total_cost_usd, Some(1.5));
+        assert_eq!(result.permission_denial_count, Some(1));
+        assert_eq!(result.permission_denials, Some(vec!["Bash".to_string()]));
+        assert_eq!(result.files_changed, vec!["src/a.rs", "src/b.rs"]);
+        assert_eq!(result.result_text.as_deref(), Some("Step 2 done"));
+        assert_eq!(result.stderr, "some error");
     }
 }

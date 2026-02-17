@@ -468,6 +468,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_assistant_skips_unknown_block_to_find_known() {
+        // First block has unknown type, second has a recognized text type
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"thinking","text":"hmm"},{"type":"text","text":"Hello"}]}}"#;
+        let event = parse_event(line).unwrap();
+        match event {
+            StreamEvent::AssistantText { text } => assert_eq!(text, "Hello"),
+            other => panic!("Expected AssistantText, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_suggest_permission_fix_write() {
         assert_eq!(
             suggest_permission_fix("Write"),
