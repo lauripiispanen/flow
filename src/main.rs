@@ -16,6 +16,7 @@ use flow::cli::render_diagnostic_report;
 use flow::cycle::config::FlowConfig;
 use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
+use flow::cycle::selector::select_cycle;
 use flow::doctor::diagnose;
 use flow::log::jsonl::JsonlLogger;
 use flow::log::CycleOutcome;
@@ -42,6 +43,10 @@ struct Cli {
     /// Maximum number of iterations to run (default: 1)
     #[arg(long, default_value = "1")]
     max_iterations: u32,
+
+    /// Path to TODO.md for cycle selector context (default: TODO.md)
+    #[arg(long, default_value = "TODO.md")]
+    todo: PathBuf,
 
     /// Subcommand to run
     #[command(subcommand)]
@@ -139,23 +144,31 @@ async fn main() -> Result<()> {
         return run_doctor(&cli);
     }
 
-    // Require --cycle when not using a subcommand
-    let cycle_name = cli.cycle.ok_or_else(|| {
-        anyhow::anyhow!("Missing --cycle argument. Usage: flow --cycle <name> or flow doctor")
-    })?;
-
     // Load configuration
     let config = FlowConfig::from_path(&cli.config)
         .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
 
-    // Validate the requested cycle exists
-    config.get_cycle(&cycle_name).with_context(|| {
-        format!(
-            "Unknown cycle '{}'. Available cycles: {}",
-            cycle_name,
-            available_cycle_names(&config)
-        )
-    })?;
+    // Determine run mode: fixed cycle or AI-selected
+    let fixed_cycle = cli.cycle.clone();
+    let use_selector = fixed_cycle.is_none();
+
+    // Validate the requested cycle if specified
+    if let Some(ref name) = fixed_cycle {
+        config.get_cycle(name).with_context(|| {
+            format!(
+                "Unknown cycle '{}'. Available cycles: {}",
+                name,
+                available_cycle_names(&config)
+            )
+        })?;
+    }
+
+    // Require --cycle for single-iteration runs without selector
+    if use_selector && cli.max_iterations <= 1 {
+        anyhow::bail!(
+            "Missing --cycle argument. Usage: flow --cycle <name>, flow --max-iterations N (AI-selected), or flow doctor"
+        );
+    }
 
     // Initialize
     let circuit_breaker = config.global.circuit_breaker_repeated;
@@ -166,9 +179,16 @@ async fn main() -> Result<()> {
     let max_iterations = cli.max_iterations;
 
     if max_iterations > 1 {
-        eprintln!(
-            "Starting multi-iteration run: up to {max_iterations} iterations of '{cycle_name}'"
-        );
+        if use_selector {
+            eprintln!(
+                "Starting autonomous run: up to {max_iterations} iterations with AI cycle selection"
+            );
+        } else {
+            eprintln!(
+                "Starting multi-iteration run: up to {max_iterations} iterations of '{}'",
+                fixed_cycle.as_deref().unwrap_or("?")
+            );
+        }
     }
 
     // Main iteration loop
@@ -184,7 +204,30 @@ async fn main() -> Result<()> {
             );
         }
 
-        // Execute the requested cycle
+        // Determine which cycle to run
+        let cycle_name = if let Some(ref name) = fixed_cycle {
+            name.clone()
+        } else {
+            // AI-driven cycle selection
+            let log_entries = logger
+                .read_all()
+                .context("Failed to read log for selector")?;
+            let todo_content = std::fs::read_to_string(&cli.todo).unwrap_or_default();
+
+            eprintln!("{} Selecting next cycle...", ">>>".bold().yellow());
+            let selection = select_cycle(&config, &log_entries, &todo_content)
+                .await
+                .context("Cycle selection failed")?;
+            eprintln!(
+                "{} Selected '{}': {}",
+                ">>>".bold().green(),
+                selection.cycle,
+                selection.reason
+            );
+            selection.cycle
+        };
+
+        // Execute the selected cycle
         let result = execute_and_log(
             &executor,
             &logger,
@@ -241,7 +284,14 @@ async fn main() -> Result<()> {
     }
 
     if max_iterations > 1 {
-        eprintln!("\nCompleted {max_iterations} iteration(s) of '{cycle_name}'");
+        if use_selector {
+            eprintln!("\nCompleted {max_iterations} autonomous iteration(s)");
+        } else {
+            eprintln!(
+                "\nCompleted {max_iterations} iteration(s) of '{}'",
+                fixed_cycle.as_deref().unwrap_or("?")
+            );
+        }
     }
 
     Ok(())
@@ -444,5 +494,26 @@ prompt = "Garden"
         let cli = Cli::try_parse_from(["flow", "--cycle", "coding"]).unwrap();
         assert_eq!(cli.cycle.as_deref(), Some("coding"));
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_cli_parses_todo_flag() {
+        let cli =
+            Cli::try_parse_from(["flow", "--cycle", "coding", "--todo", "my-todo.md"]).unwrap();
+        assert_eq!(cli.todo, PathBuf::from("my-todo.md"));
+    }
+
+    #[test]
+    fn test_cli_todo_defaults_to_todo_md() {
+        let cli = Cli::try_parse_from(["flow", "--cycle", "coding"]).unwrap();
+        assert_eq!(cli.todo, PathBuf::from("TODO.md"));
+    }
+
+    #[test]
+    fn test_cli_max_iterations_without_cycle_is_valid() {
+        // When --max-iterations > 1, --cycle is optional (uses selector)
+        let cli = Cli::try_parse_from(["flow", "--max-iterations", "10"]).unwrap();
+        assert!(cli.cycle.is_none());
+        assert_eq!(cli.max_iterations, 10);
     }
 }

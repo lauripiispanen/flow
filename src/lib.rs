@@ -20,4 +20,5 @@ pub use cli::{render_diagnostic_report, CycleDisplay, HealthColor, StatusLine};
 pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig};
 pub use cycle::executor::{CycleExecutor, CycleResult, PreparedCycle};
 pub use cycle::rules::find_triggered_cycles;
+pub use cycle::selector::{select_cycle, CycleSelection};
 pub use log::{CycleOutcome, JsonlLogger};

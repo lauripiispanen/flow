@@ -5,3 +5,4 @@
 pub mod config;
 pub mod executor;
 pub mod rules;
+pub mod selector;
