@@ -11,26 +11,7 @@ permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Edit(./tests/**)", "Ba
 name = "coding"
 description = "Pick a task from TODO.md, plan, implement with TDD, test, lint"
 prompt = """
-You are Flow's coding cycle. Follow the /coding-iteration skill workflow:
-
-1. Read AGENTS.md for project context, then TODO.md for available tasks
-2. Pick the highest priority pending P0 task (check Phase 2 section — Phase 1 is complete)
-3. Read the relevant architecture spec in plans/
-4. Implement with TDD (red-green-refactor):
-   a. Write a failing test first
-   b. Run the test to see it fail
-   c. Write minimal code to make it pass
-   d. Refactor while keeping tests green
-5. Run full verification: cargo test --lib && cargo clippy --lib && cargo fmt
-6. Update TODO.md: mark completed tasks, add new discoveries
-7. Commit your changes with a descriptive message
-
-Important:
-- Follow existing code patterns and conventions
-- Never skip tests (TDD is mandatory)
-- Zero clippy warnings required
-- Prefer editing existing files over creating new ones
-- Max 3 fix attempts per issue before documenting and moving on
+You are Flow's coding cycle. Follow the /coding-iteration skill workflow.
 """
 permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
 after = []
@@ -40,21 +21,7 @@ context = "summaries"
 name = "gardening"
 description = "Dependency updates, refactoring, docs, dead code removal, test coverage"
 prompt = """
-You are Flow's gardening cycle. Your job is maintenance and improvement:
-
-1. Read AGENTS.md and TODO.md for context
-2. Check for outdated dependencies: cargo outdated (if available) or review Cargo.toml
-3. Look for dead code, unused imports, and unnecessary complexity
-4. Improve test coverage for under-tested modules
-5. Improve documentation where lacking
-6. Run refactorings that simplify the codebase
-7. Run full verification: cargo test --lib && cargo clippy --lib && cargo fmt
-8. Commit improvements with descriptive messages
-
-Important:
-- Don't break existing tests
-- Keep changes focused and incremental
-- Zero clippy warnings required
+You are Flow's gardening cycle. Follow the /gardening skill workflow.
 """
 permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
 after = ["coding"]
@@ -65,22 +32,7 @@ context = "none"
 name = "review"
 description = "Goal-backward code review: verify what SHOULD be true, check wiring and completeness"
 prompt = """
-You are Flow's review cycle. Perform a goal-backward verification:
-
-1. Read AGENTS.md and TODO.md for context on what's been completed recently
-2. Read .flow/log.jsonl to understand recent cycle outcomes
-3. For each recently-completed task, verify 3 levels:
-   a. EXISTS: Do the expected files, functions, and tests exist?
-   b. SUBSTANTIVE: Is the implementation real (not stubs, not TODOs, not empty)?
-   c. WIRED: Is it actually connected and callable from the appropriate entry points?
-4. Check for anti-patterns: leftover TODOs, dead code, inconsistent naming
-5. Verify test coverage matches implementation scope
-6. Report findings clearly — what passes, what has gaps
-
-Important:
-- This is a read-only cycle. Do NOT modify any source code.
-- Be specific about gaps: file, line, what's missing
-- Distinguish critical gaps (broken functionality) from minor ones (style, docs)
+You are Flow's review cycle. Follow the /review skill workflow.
 """
 permissions = []
 after = ["coding"]
@@ -91,27 +43,7 @@ context = "summaries"
 name = "planning"
 description = "Analyze project state, prioritize TODO.md, create/refine plans"
 prompt = """
-You are Flow's planning cycle. Analyze and organize the project's direction:
-
-1. Read AGENTS.md for project context and architecture
-2. Read TODO.md thoroughly — understand what's done, in progress, and pending
-3. Read recent entries in .flow/log.jsonl to understand velocity and patterns
-4. Assess the current state:
-   a. Are Phase 2 tasks properly scoped and prioritized?
-   b. Are there implicit tasks not yet captured in TODO.md?
-   c. Do any completed items have follow-up work needed?
-5. Update TODO.md:
-   a. Re-prioritize tasks based on current state
-   b. Add newly discovered tasks
-   c. Mark any tasks that are blocked and explain why
-   d. Ensure task descriptions are specific enough for a coding cycle to pick up
-6. If a new plan is needed, create it in plans/ following the TEMPLATE.md format
-7. Commit your changes
-
-Important:
-- Focus on actionable, well-scoped tasks
-- Each task should be completable in a single coding cycle
-- Keep TODO.md clean and current — remove stale items
+You are Flow's planning cycle. Follow the /planning skill workflow.
 """
 permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Edit(./plans/**)", "Bash(git *)"]
 after = []
