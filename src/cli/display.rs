@@ -7,6 +7,17 @@ use colored::Colorize;
 
 use crate::claude::stream::StreamEvent;
 
+/// Truncate a string to at most `max_chars` Unicode characters, appending "..." if truncated.
+fn truncate(s: &str, max_chars: usize) -> String {
+    let mut chars = s.chars();
+    let collected: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{collected}...")
+    } else {
+        collected
+    }
+}
+
 /// Display handler for cycle execution output
 pub struct CycleDisplay {
     cycle_name: String,
@@ -38,13 +49,7 @@ impl CycleDisplay {
                 eprintln!("  {} {}", "Model:".dimmed(), model);
             }
             StreamEvent::AssistantText { text } => {
-                // Show assistant text, truncated if very long
-                let display_text = if text.len() > 200 {
-                    format!("{}...", &text[..197])
-                } else {
-                    text.clone()
-                };
-                eprintln!("  {display_text}");
+                eprintln!("  {}", truncate(text, 500));
             }
             StreamEvent::ToolUse { tool_name, input } => {
                 let summary = summarize_tool_input(tool_name, input);
@@ -54,12 +59,7 @@ impl CycleDisplay {
                 is_error: true,
                 content,
             } => {
-                let short = if content.len() > 100 {
-                    format!("{}...", &content[..97])
-                } else {
-                    content.clone()
-                };
-                eprintln!("  {} {}", "✗".red().bold(), short.red());
+                eprintln!("  {} {}", "✗".red().bold(), truncate(content, 200).red());
             }
             StreamEvent::Result {
                 is_error,
@@ -102,14 +102,8 @@ impl CycleDisplay {
         };
         eprintln!("  {} {}", status, self.cycle_name.bold());
 
-        // Result text (first 200 chars)
         if !result_text.is_empty() {
-            let display = if result_text.len() > 200 {
-                format!("{}...", &result_text[..197])
-            } else {
-                result_text.to_string()
-            };
-            eprintln!("  {display}");
+            eprintln!("  {}", truncate(result_text, 500));
         }
 
         // Stats line
@@ -144,14 +138,7 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
         "Bash" => input
             .get("command")
             .and_then(serde_json::Value::as_str)
-            .map_or_else(String::new, |c| {
-                let short = if c.len() > 60 {
-                    format!("{}...", &c[..57])
-                } else {
-                    c.to_string()
-                };
-                format!(" `{short}`")
-            }),
+            .map_or_else(String::new, |c| format!(" `{}`", truncate(c, 80))),
         "Glob" => input
             .get("pattern")
             .and_then(serde_json::Value::as_str)
@@ -347,6 +334,53 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // --- truncate helper tests ---
+
+    #[test]
+    fn test_truncate_short_string_unchanged() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_exact_limit_unchanged() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_over_limit_appends_ellipsis() {
+        assert_eq!(truncate("hello world", 5), "hello...");
+    }
+
+    #[test]
+    fn test_truncate_multibyte_chars_no_panic() {
+        // '—' is 3 bytes; byte-slicing at index 197 would panic if it splits the char.
+        // Place the em-dash at char position 5 so truncating at 4 drops it cleanly.
+        let s = "aaaa—extra text";
+        let result = truncate(&s, 4);
+        assert_eq!(result, "aaaa...");
+        assert!(!result.contains('—'));
+    }
+
+    #[test]
+    fn test_truncate_multibyte_within_limit() {
+        let s = "café";
+        assert_eq!(truncate(s, 10), "café");
+    }
+
+    #[test]
+    fn test_truncate_emoji_no_panic() {
+        let s = "hello 🎉 world";
+        let result = truncate(s, 7);
+        assert_eq!(result, "hello 🎉...");
+    }
+
+    #[test]
+    fn test_truncate_empty_string() {
+        assert_eq!(truncate("", 10), "");
+    }
+
+    // --- CycleDisplay tests ---
+
     #[test]
     fn test_new_display() {
         let display = CycleDisplay::new("coding");
@@ -379,10 +413,11 @@ mod tests {
 
     #[test]
     fn test_summarize_bash_long_command_truncated() {
-        let long_cmd = "a".repeat(100);
+        let long_cmd = "a".repeat(200);
         let input = json!({"command": long_cmd});
         let result = summarize_tool_input("Bash", &input);
-        assert!(result.len() < 70);
+        // " `" + 80 chars + "...`" = 87 chars
+        assert!(result.len() <= 87);
         assert!(result.ends_with("...`"));
     }
 
