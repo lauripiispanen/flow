@@ -5,5 +5,6 @@
 pub mod config;
 pub mod context;
 pub mod executor;
+pub mod router;
 pub mod rules;
 pub mod selector;

@@ -34,10 +34,12 @@
   - Completed: 2026-02-17
   - Description: Converted `cycles.toml` coding cycle into a three-step multi-step cycle: (1) **plan** step — architect session reads TODO.md/AGENTS.md and writes implementation plan to `.flow/current-plan.md`; (2) **plan-review** step — architect continues session, critically evaluates the plan, writes APPROVED/REJECTED to `.flow/plan-review.md`, can `exit 1` to halt cycle on rejection; (3) **implement** step — coder session reads the approved plan and implements with TDD. Added config test `test_actual_cycles_toml_coding_is_multi_step` to verify real cycles.toml structure.
 
-- [ ] Step-level routing: LLM-driven next-step selection
+- [x] Step-level routing: LLM-driven next-step selection
   - Priority: P1
   - Depends on: step executor (multi-step cycles)
-  - Description: After each step completes, determine the next step to run. Default is `sequential` (proceed to the next step in TOML order). For steps that need conditional branching, allow an optional `router = "llm"` field in TOML: the step executor posts the completed step's `result_text` + the cycle's available step names to a model (same pattern as the cycle selector in `src/cycle/selector.rs`), and gets back a next-step name. This handles plan-review (approve → implement, block → plan), test steps (pass → proceed, fail → fix), security review (clean/warnings/critical → different paths), and any future multi-outcome structure — without hard-coding keyword signals. The router response should include a reason (loggable). Enforce a `max_visits` cap per step (default 3) to prevent infinite loops. Steps without `router` always proceed sequentially (backward compatible).
+  - Completed: 2026-02-18
+  - Description: After each step completes, determine the next step to run. Default is `sequential` (proceed to the next step in TOML order). For steps that need conditional branching, allow an optional `router = "llm"` field in TOML: the step executor posts the completed step's `result_text` + the cycle's available step names to a model (same pattern as the cycle selector in `src/cycle/selector.rs`), and gets back a next-step name. Enforce a `max_visits` cap per step (default 3) to prevent infinite loops. Steps without `router` always proceed sequentially (backward compatible).
+  - Components: `StepRouter` enum and `max_visits` field in config.rs, `src/cycle/router.rs` (new) with `RouteDecision`, `VisitTracker`, `route_sequential()`, `build_router_prompt()`, `parse_router_response()`, `route_with_llm()`, `determine_next_step()`. `StepAggregator` extracted in executor.rs. 28 new tests (22 router + 6 config).
 
 ### Outcome Data Completeness
 - [x] Populate `files_changed` from stream data or git diff

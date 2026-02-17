@@ -49,6 +49,24 @@ const fn default_max_consecutive_failures() -> u32 {
     3
 }
 
+/// Router mode for determining the next step after a step completes
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum StepRouter {
+    /// Proceed to the next step in TOML order (default)
+    Sequential,
+    /// Use an LLM call to determine the next step based on the completed step's output
+    Llm,
+}
+
+const fn default_step_router() -> StepRouter {
+    StepRouter::Sequential
+}
+
+const fn default_max_visits() -> u32 {
+    3
+}
+
 /// A single step within a multi-step cycle
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StepConfig {
@@ -62,6 +80,15 @@ pub struct StepConfig {
     /// Additional permissions for this step (additive to global + cycle)
     #[serde(default)]
     pub permissions: Vec<String>,
+    /// How to determine the next step after this one completes.
+    /// `sequential` (default): proceed to the next step in TOML order.
+    /// `llm`: invoke a model to choose the next step based on this step's output.
+    #[serde(default = "default_step_router")]
+    pub router: StepRouter,
+    /// Maximum number of times this step can be visited in one cycle execution.
+    /// Prevents infinite loops when using LLM routing. Default: 3.
+    #[serde(default = "default_max_visits")]
+    pub max_visits: u32,
 }
 
 /// A single cycle definition
@@ -1046,6 +1073,134 @@ prompt = "Plan."
         assert!(
             implement.permissions.iter().any(|p| p == "Bash(git *)"),
             "implement step should have git permissions for committing"
+        );
+    }
+
+    // --- StepConfig router and max_visits tests ---
+
+    #[test]
+    fn test_step_router_default_is_sequential() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.router, StepRouter::Sequential);
+    }
+
+    #[test]
+    fn test_step_router_llm_parsed() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan-review"
+prompt = "Review the plan."
+router = "llm"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.router, StepRouter::Llm);
+    }
+
+    #[test]
+    fn test_step_router_sequential_explicit() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+router = "sequential"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.router, StepRouter::Sequential);
+    }
+
+    #[test]
+    fn test_step_max_visits_default_is_3() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.max_visits, 3);
+    }
+
+    #[test]
+    fn test_step_max_visits_custom_value() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+max_visits = 5
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.max_visits, 5);
+    }
+
+    #[test]
+    fn test_reject_invalid_router_value() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+router = "invalid"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Failed to parse"),
+            "Expected parse error for invalid router, got: {err}"
         );
     }
 

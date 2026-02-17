@@ -18,6 +18,7 @@ use crate::claude::{
 use crate::cli::{CycleDisplay, StatusLine};
 use crate::cycle::config::FlowConfig;
 use crate::cycle::context::{build_context, inject_context};
+use crate::cycle::router::{determine_next_step, RouteDecision, VisitTracker};
 use crate::log::jsonl::CycleOutcome;
 
 /// Prepared cycle ready for execution
@@ -165,11 +166,18 @@ impl CycleExecutor {
         ))
     }
 
-    /// Execute a multi-step cycle, running each step sequentially.
+    /// Execute a multi-step cycle with router-based step navigation.
     ///
     /// Steps sharing the same `session` tag continue the same Claude Code session.
     /// If any step fails (non-zero exit code), execution stops immediately.
-    /// The final `CycleResult` aggregates data across all steps.
+    /// Step navigation is determined by each step's `router` setting:
+    /// - `sequential`: proceed to the next step in TOML order.
+    /// - `llm`: invoke Claude to choose the next step based on output.
+    ///
+    /// Visit counts are tracked per step; a step cannot be visited more than
+    /// its `max_visits` limit (default 3) to prevent infinite loops.
+    ///
+    /// The final `CycleResult` aggregates data across all executed steps.
     async fn execute_steps(
         &self,
         cycle_name: &str,
@@ -184,30 +192,26 @@ impl CycleExecutor {
 
         let context = build_context(&cycle.context, log_entries);
         let mut session_mgr = SessionManager::new();
+        let mut visit_tracker = VisitTracker::new();
+        let mut agg = StepAggregator::new();
+        let mut current_step_index: usize = 0;
 
-        // Aggregated metrics across all steps
-        let mut total_duration_secs: u64 = 0;
-        let mut total_turns: u32 = 0;
-        let mut total_cost: f64 = 0.0;
-        let mut total_denials: u32 = 0;
-        let mut all_denials: Vec<String> = Vec::new();
-        let mut all_files_changed: Vec<String> = Vec::new();
-        let mut total_tests_passed: u32 = 0;
-        let mut last_result_text: Option<String> = None;
-        let mut last_exit_code: Option<i32> = None;
-        let mut combined_stderr = String::new();
+        loop {
+            let step = &cycle.steps[current_step_index];
 
-        for step in &cycle.steps {
+            if visit_tracker.would_exceed(&step.name, step.max_visits) {
+                eprintln!(
+                    "Step '{}' reached max_visits limit ({}), stopping cycle",
+                    step.name, step.max_visits
+                );
+                break;
+            }
+            visit_tracker.record(&step.name);
+
             let step_label = format!("{cycle_name}/{}", step.name);
             let mut status_line = StatusLine::new(&step_label);
-
-            // Inject context into the step prompt
             let step_prompt = inject_context(&step.prompt, context.clone());
-
-            // Resolve permissions: global + cycle + step
             let permissions = resolve_step_permissions(&self.config.global, cycle, step);
-
-            // Build command, resuming session if tag has been seen before
             let resume_args = session_mgr.resume_args(step.session.as_deref());
             let cmd = build_command_with_session(&step_prompt, &permissions, &resume_args);
 
@@ -217,83 +221,159 @@ impl CycleExecutor {
 
             status_line.clear();
 
-            // Register the session ID for future steps with the same tag
             if let (Some(tag), Some(sid)) = (&step.session, &accumulator.session_id) {
                 session_mgr.register(tag, sid.clone());
             }
 
-            // Aggregate step results
-            total_duration_secs += duration_secs;
-            if !stderr.is_empty() {
-                if !combined_stderr.is_empty() {
-                    combined_stderr.push('\n');
-                }
-                combined_stderr.push_str(&stderr);
-            }
-
-            if let Some(StreamEvent::Result {
-                result_text,
-                num_turns,
-                total_cost_usd,
-                permission_denials,
-                ..
-            }) = &accumulator.result
-            {
-                last_result_text = Some(result_text.clone());
-                total_turns = total_turns.saturating_add(*num_turns);
-                total_cost += total_cost_usd;
-                total_denials = total_denials
-                    .saturating_add(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX));
-                all_denials.extend(permission_denials.clone());
-            }
-
-            // Aggregate files changed across steps (deduplicated)
-            for file in &accumulator.files_changed {
-                if !all_files_changed.contains(file) {
-                    all_files_changed.push(file.clone());
-                }
-            }
-
-            total_tests_passed = total_tests_passed.saturating_add(accumulator.tests_passed);
-
-            last_exit_code = exit_code;
+            let step_result_text = agg.accumulate(&accumulator, &stderr, exit_code, duration_secs);
 
             // Fail-fast: stop if this step failed
-            if exit_code != Some(0) {
+            if agg.last_exit_code != Some(0) {
                 break;
+            }
+
+            // Determine the next step using the router
+            let decision = determine_next_step(
+                step,
+                current_step_index,
+                &step_result_text,
+                &cycle.steps,
+                &visit_tracker,
+            )
+            .await?;
+
+            match decision {
+                None | Some(RouteDecision::Done { .. }) => break,
+                Some(RouteDecision::GoTo { step_name, reason }) => {
+                    current_step_index = cycle
+                        .steps
+                        .iter()
+                        .position(|s| s.name == step_name)
+                        .with_context(|| {
+                            format!("Router selected unknown step '{step_name}' (reason: {reason})")
+                        })?;
+                }
             }
         }
 
-        Ok(CycleResult {
+        Ok(agg.into_cycle_result(cycle_name))
+    }
+}
+
+/// Aggregates metrics across multiple steps in a multi-step cycle execution.
+struct StepAggregator {
+    total_duration_secs: u64,
+    total_turns: u32,
+    total_cost: f64,
+    total_denials: u32,
+    all_denials: Vec<String>,
+    all_files_changed: Vec<String>,
+    total_tests_passed: u32,
+    last_result_text: Option<String>,
+    last_exit_code: Option<i32>,
+    combined_stderr: String,
+}
+
+impl StepAggregator {
+    const fn new() -> Self {
+        Self {
+            total_duration_secs: 0,
+            total_turns: 0,
+            total_cost: 0.0,
+            total_denials: 0,
+            all_denials: Vec::new(),
+            all_files_changed: Vec::new(),
+            total_tests_passed: 0,
+            last_result_text: None,
+            last_exit_code: None,
+            combined_stderr: String::new(),
+        }
+    }
+
+    /// Merge one step's results into the aggregate. Returns the step's result text.
+    fn accumulate(
+        &mut self,
+        accumulator: &StreamAccumulator,
+        stderr: &str,
+        exit_code: Option<i32>,
+        duration_secs: u64,
+    ) -> String {
+        self.total_duration_secs += duration_secs;
+
+        if !stderr.is_empty() {
+            if !self.combined_stderr.is_empty() {
+                self.combined_stderr.push('\n');
+            }
+            self.combined_stderr.push_str(stderr);
+        }
+
+        let step_result_text = if let Some(StreamEvent::Result {
+            result_text,
+            num_turns,
+            total_cost_usd,
+            permission_denials,
+            ..
+        }) = &accumulator.result
+        {
+            self.last_result_text = Some(result_text.clone());
+            self.total_turns = self.total_turns.saturating_add(*num_turns);
+            self.total_cost += total_cost_usd;
+            self.total_denials = self
+                .total_denials
+                .saturating_add(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX));
+            self.all_denials.extend(permission_denials.clone());
+            result_text.clone()
+        } else {
+            String::new()
+        };
+
+        for file in &accumulator.files_changed {
+            if !self.all_files_changed.contains(file) {
+                self.all_files_changed.push(file.clone());
+            }
+        }
+
+        self.total_tests_passed = self
+            .total_tests_passed
+            .saturating_add(accumulator.tests_passed);
+
+        self.last_exit_code = exit_code;
+
+        step_result_text
+    }
+
+    /// Convert aggregated data into a final `CycleResult`.
+    fn into_cycle_result(self, cycle_name: &str) -> CycleResult {
+        CycleResult {
             cycle_name: cycle_name.to_string(),
-            success: last_exit_code == Some(0),
-            exit_code: last_exit_code,
-            stderr: combined_stderr,
-            duration_secs: total_duration_secs,
-            result_text: last_result_text,
-            num_turns: if total_turns > 0 {
-                Some(total_turns)
+            success: self.last_exit_code == Some(0),
+            exit_code: self.last_exit_code,
+            stderr: self.combined_stderr,
+            duration_secs: self.total_duration_secs,
+            result_text: self.last_result_text,
+            num_turns: if self.total_turns > 0 {
+                Some(self.total_turns)
             } else {
                 None
             },
-            total_cost_usd: if total_cost > 0.0 {
-                Some(total_cost)
+            total_cost_usd: if self.total_cost > 0.0 {
+                Some(self.total_cost)
             } else {
                 None
             },
-            permission_denial_count: if total_denials > 0 {
-                Some(total_denials)
+            permission_denial_count: if self.total_denials > 0 {
+                Some(self.total_denials)
             } else {
                 None
             },
-            permission_denials: if all_denials.is_empty() {
+            permission_denials: if self.all_denials.is_empty() {
                 None
             } else {
-                Some(all_denials)
+                Some(self.all_denials)
             },
-            files_changed: all_files_changed,
-            tests_passed: total_tests_passed,
-        })
+            files_changed: self.all_files_changed,
+            tests_passed: self.total_tests_passed,
+        }
     }
 }
 
