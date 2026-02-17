@@ -1,13 +1,13 @@
 # Flow
 
-> An automated coding pipeline runner that orchestrates structured code production using Claude Code
+> "The outer loop that turns Claude Code from a single-shot tool into an autonomous development pipeline."
 
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+Flow is a loop runner for Claude Code. You define named cycles — coding, gardening, review, planning — each with its own prompt and permission set, and Flow executes them as fresh Claude Code invocations. Point it at a `cycles.toml` and a `TODO.md`, run `flow --max-iterations 20`, and it picks the most useful cycle each iteration, spawns Claude Code with scoped permissions, logs the outcome, auto-triggers follow-up cycles, and repeats — autonomous software development in a loop, with guardrails.
 
-Flow is a Rust-based orchestrator that enables automated, iterative software development by coordinating Claude Code CLI invocations. Each iteration executes a named **cycle** (e.g., coding, gardening, review) in a fresh context, allowing for focused, incremental progress.
+## Features
 
 ### Key Features
 
