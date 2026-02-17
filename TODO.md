@@ -29,10 +29,10 @@
   - Completed: 2026-02-17
   - Description: Each step can have its own permissions (additive on top of cycle + global). Implemented as `resolve_step_permissions(global, cycle, step)`.
 
-- [ ] Add plan + plan-review steps to coding cycle
+- [x] Add plan + plan-review steps to coding cycle
   - Priority: P1
-  - Depends on: step executor (multi-step cycles)
-  - Description: Extend `cycles.toml` coding cycle into a multi-step cycle: (1) **plan** step — architect reads TODO.md and writes an implementation plan to `.flow/current-plan.md` (read + edit plan file only, no src writes); (2) **plan-review** step — reads the plan, writes approval/feedback to `.flow/plan-review.md`. The step executor calls `execute_with_display()` for each step, collects `CycleResult`, and checks the result before proceeding to the implement step. Intermediate artifacts stay on filesystem for inspectability (consistent with plan 003 design).
+  - Completed: 2026-02-17
+  - Description: Converted `cycles.toml` coding cycle into a three-step multi-step cycle: (1) **plan** step — architect session reads TODO.md/AGENTS.md and writes implementation plan to `.flow/current-plan.md`; (2) **plan-review** step — architect continues session, critically evaluates the plan, writes APPROVED/REJECTED to `.flow/plan-review.md`, can `exit 1` to halt cycle on rejection; (3) **implement** step — coder session reads the approved plan and implements with TDD. Added config test `test_actual_cycles_toml_coding_is_multi_step` to verify real cycles.toml structure.
 
 - [ ] Step-level routing: LLM-driven next-step selection
   - Priority: P1

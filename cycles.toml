@@ -1,7 +1,7 @@
 # Flow Cycle Definitions
 #
 # Each cycle defines a prompt, permissions, and dependencies.
-# Permissions are additive: global + per-cycle.
+# Permissions are additive: global + per-cycle + per-step.
 # Multi-iteration runs: `flow --max-iterations 10 --cycle coding`
 
 [global]
@@ -9,13 +9,72 @@ permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Edit(./tests/**)", "Ba
 
 [[cycle]]
 name = "coding"
-description = "Pick a task from TODO.md, plan, implement with TDD, test, lint"
-prompt = """
-You are Flow's coding cycle. Follow the /coding-iteration skill workflow.
-"""
-permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
+description = "Plan, review plan, then implement with TDD -- three-step cycle with session affinity"
 after = []
 context = "summaries"
+
+[[cycle.step]]
+name = "plan"
+session = "architect"
+prompt = """
+You are the architect for Flow's coding cycle.
+
+Your job: read the project state and write a detailed implementation plan.
+
+1. Read TODO.md -- identify the highest-priority unfinished task (P0 first, then P1).
+2. Read AGENTS.md for architecture context and patterns.
+3. Read any relevant source files for the component you'll be planning.
+4. Write a clear, detailed implementation plan to .flow/current-plan.md including:
+   - Which task you selected and why
+   - What files need to change
+   - The TDD approach (what tests to write first, then what to implement)
+   - Any design decisions or trade-offs
+   - Success criteria (how to verify it's done)
+
+Do NOT write any source code. Do NOT edit src/ or tests/ files.
+Write only to .flow/current-plan.md.
+"""
+permissions = ["Edit(./.flow/current-plan.md)"]
+
+[[cycle.step]]
+name = "plan-review"
+session = "architect"
+prompt = """
+You are the architect reviewing your own implementation plan.
+
+1. Read .flow/current-plan.md -- the plan you just wrote.
+2. Critically evaluate it:
+   - Is the task selection correct (right priority)?
+   - Is the plan complete and unambiguous?
+   - Are the TDD steps clear?
+   - Are there any risks or gaps?
+3. If the plan is APPROVED: write "APPROVED" and a brief rationale to .flow/plan-review.md and exit normally.
+4. If the plan needs revision: write "REJECTED" with specific issues to .flow/plan-review.md,
+   then run: Bash(exit 1) -- this will stop the cycle so you can retry with a better plan.
+
+Be rigorous. A bad plan leads to wasted implementation effort.
+"""
+permissions = ["Edit(./.flow/plan-review.md)", "Bash(exit *)"]
+
+[[cycle.step]]
+name = "implement"
+session = "coder"
+prompt = """
+You are Flow's coding cycle implementer. Follow the /coding-iteration skill workflow.
+
+Before starting implementation:
+1. Read .flow/current-plan.md -- this is your implementation plan. Follow it.
+2. Read .flow/plan-review.md -- verify the plan was APPROVED before proceeding.
+
+Then implement the plan using TDD:
+- RED: Write failing tests first
+- GREEN: Minimum code to pass tests
+- REFACTOR: Clean up while tests stay green
+
+Use the /update-todos skill before committing to keep TODO.md current.
+Commit your changes when done.
+"""
+permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
 
 [[cycle]]
 name = "gardening"

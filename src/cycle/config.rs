@@ -998,6 +998,57 @@ prompt = "Plan."
         assert!(coding.prompt.is_empty());
     }
 
+    /// Verify the actual cycles.toml in the project root parses and that the
+    /// coding cycle is a multi-step cycle with plan / plan-review / implement steps.
+    #[test]
+    fn test_actual_cycles_toml_coding_is_multi_step() {
+        let config = FlowConfig::from_path("cycles.toml").expect("cycles.toml must be parseable");
+        let coding = config.get_cycle("coding").expect("coding cycle must exist");
+
+        assert!(
+            coding.is_multi_step(),
+            "coding cycle should be multi-step (using [[cycle.step]] entries)"
+        );
+        assert!(
+            coding.prompt.is_empty(),
+            "multi-step cycle must not have a top-level prompt"
+        );
+
+        let step_names: Vec<&str> = coding.steps.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            step_names,
+            vec!["plan", "plan-review", "implement"],
+            "coding cycle should have plan, plan-review, implement steps"
+        );
+
+        // plan step: architect session, read-only + plan file write
+        let plan = &coding.steps[0];
+        assert_eq!(plan.session.as_deref(), Some("architect"));
+        assert!(
+            plan.permissions
+                .iter()
+                .any(|p| p.starts_with("Edit(./.flow/")),
+            "plan step should have edit permission for .flow/ artifacts"
+        );
+
+        // plan-review step: architect continues (same session), reads plan, can exit 1
+        let review = &coding.steps[1];
+        assert_eq!(review.name, "plan-review");
+        assert_eq!(
+            review.session.as_deref(),
+            Some("architect"),
+            "plan-review should continue the architect session"
+        );
+
+        // implement step: coder session with full write permissions
+        let implement = &coding.steps[2];
+        assert_eq!(implement.session.as_deref(), Some("coder"));
+        assert!(
+            implement.permissions.iter().any(|p| p == "Bash(git *)"),
+            "implement step should have git permissions for committing"
+        );
+    }
+
     #[test]
     fn test_step_permissions_validated() {
         let toml = r#"
