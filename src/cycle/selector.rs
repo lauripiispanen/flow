@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(summary.total_iterations, 0);
         assert!(summary.cycle_counts.is_empty());
         assert!(summary.recent_outcomes.is_empty());
-        assert_eq!(summary.total_cost_usd, 0.0);
+        assert!((summary.total_cost_usd - 0.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -442,7 +442,7 @@ mod tests {
 
         assert_eq!(summary.total_iterations, 1);
         assert_eq!(summary.cycle_counts.get("coding"), Some(&1));
-        assert_eq!(summary.total_cost_usd, 2.0);
+        assert!((summary.total_cost_usd - 2.0).abs() < f64::EPSILON);
         assert_eq!(summary.recent_outcomes.len(), 1);
         assert!(summary.recent_outcomes[0].success);
     }
@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(summary.total_iterations, 3);
         assert_eq!(summary.cycle_counts.get("coding"), Some(&2));
         assert_eq!(summary.cycle_counts.get("gardening"), Some(&1));
-        assert_eq!(summary.total_cost_usd, 5.3);
+        assert!((summary.total_cost_usd - 5.3).abs() < 1e-10);
     }
 
     #[test]
@@ -496,7 +496,7 @@ mod tests {
             make_outcome(2, "coding", "done", None),
         ];
         let summary = summarize_log(&log, 5);
-        assert_eq!(summary.total_cost_usd, 2.0);
+        assert!((summary.total_cost_usd - 2.0).abs() < f64::EPSILON);
     }
 
     // --- format_log_summary tests ---
@@ -539,10 +539,10 @@ mod tests {
 
     #[test]
     fn test_parse_todo_pending_with_priority() {
-        let content = r#"
+        let content = r"
 - [ ] Implement cycle selector
   - Priority: P0
-"#;
+";
         let tasks = parse_todo_tasks(content);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].priority, "P0");
@@ -551,13 +551,13 @@ mod tests {
 
     #[test]
     fn test_parse_todo_ignores_completed() {
-        let content = r#"
+        let content = r"
 - [x] Already done task
   - Priority: P0
 
 - [ ] Still pending task
   - Priority: P1
-"#;
+";
         let tasks = parse_todo_tasks(content);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].description, "Still pending task");
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_parse_todo_multiple_priorities() {
-        let content = r#"
+        let content = r"
 - [ ] Critical task
   - Priority: P0
 
@@ -575,7 +575,7 @@ mod tests {
 
 - [ ] Nice to have
   - Priority: P2
-"#;
+";
         let tasks = parse_todo_tasks(content);
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[0].priority, "P0");
@@ -585,12 +585,12 @@ mod tests {
 
     #[test]
     fn test_parse_todo_no_priority_skipped() {
-        let content = r#"
+        let content = r"
 - [ ] Task without priority info
 
 - [ ] Task with priority
   - Priority: P0
-"#;
+";
         let tasks = parse_todo_tasks(content);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].description, "Task with priority");

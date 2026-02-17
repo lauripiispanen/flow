@@ -105,6 +105,52 @@ fn check_denial_gate(denials: u32, max_denials: u32, cycle_name: &str) {
     }
 }
 
+/// Print a startup banner when running multiple iterations.
+fn print_run_banner(max_iterations: u32, fixed_cycle: Option<&str>, use_selector: bool) {
+    if max_iterations <= 1 {
+        return;
+    }
+    if use_selector {
+        eprintln!(
+            "Starting autonomous run: up to {max_iterations} iterations with AI cycle selection"
+        );
+    } else {
+        eprintln!(
+            "Starting multi-iteration run: up to {max_iterations} iterations of '{}'",
+            fixed_cycle.unwrap_or("?")
+        );
+    }
+}
+
+/// Determine which cycle to run for this iteration.
+///
+/// Returns the fixed cycle name if `--cycle` was specified, or uses AI selection.
+async fn resolve_cycle_name(
+    config: &FlowConfig,
+    logger: &JsonlLogger,
+    fixed_cycle: Option<&str>,
+    todo_path: &std::path::PathBuf,
+) -> Result<String> {
+    if let Some(name) = fixed_cycle {
+        return Ok(name.to_string());
+    }
+    let log_entries = logger
+        .read_all()
+        .context("Failed to read log for selector")?;
+    let todo_content = std::fs::read_to_string(todo_path).unwrap_or_default();
+    eprintln!("{} Selecting next cycle...", ">>>".bold().yellow());
+    let selection = select_cycle(config, &log_entries, &todo_content)
+        .await
+        .context("Cycle selection failed")?;
+    eprintln!(
+        "{} Selected '{}': {}",
+        ">>>".bold().green(),
+        selection.cycle,
+        selection.reason
+    );
+    Ok(selection.cycle)
+}
+
 /// Execute a cycle with rich display and log the result. Returns the `CycleResult`.
 async fn execute_and_log(
     executor: &CycleExecutor,
@@ -182,18 +228,7 @@ async fn main() -> Result<()> {
     let mut iteration: u32 = 1;
     let max_iterations = cli.max_iterations;
 
-    if max_iterations > 1 {
-        if use_selector {
-            eprintln!(
-                "Starting autonomous run: up to {max_iterations} iterations with AI cycle selection"
-            );
-        } else {
-            eprintln!(
-                "Starting multi-iteration run: up to {max_iterations} iterations of '{}'",
-                fixed_cycle.as_deref().unwrap_or("?")
-            );
-        }
-    }
+    print_run_banner(max_iterations, fixed_cycle.as_deref(), use_selector);
 
     // Main iteration loop
     loop {
@@ -208,28 +243,8 @@ async fn main() -> Result<()> {
             );
         }
 
-        // Determine which cycle to run
-        let cycle_name = if let Some(ref name) = fixed_cycle {
-            name.clone()
-        } else {
-            // AI-driven cycle selection
-            let log_entries = logger
-                .read_all()
-                .context("Failed to read log for selector")?;
-            let todo_content = std::fs::read_to_string(&cli.todo).unwrap_or_default();
-
-            eprintln!("{} Selecting next cycle...", ">>>".bold().yellow());
-            let selection = select_cycle(&config, &log_entries, &todo_content)
-                .await
-                .context("Cycle selection failed")?;
-            eprintln!(
-                "{} Selected '{}': {}",
-                ">>>".bold().green(),
-                selection.cycle,
-                selection.reason
-            );
-            selection.cycle
-        };
+        let cycle_name =
+            resolve_cycle_name(&config, &logger, fixed_cycle.as_deref(), &cli.todo).await?;
 
         // Execute the selected cycle
         let result = execute_and_log(

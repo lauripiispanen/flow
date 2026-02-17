@@ -356,7 +356,7 @@ mod tests {
         // '—' is 3 bytes; byte-slicing at index 197 would panic if it splits the char.
         // Place the em-dash at char position 5 so truncating at 4 drops it cleanly.
         let s = "aaaa—extra text";
-        let result = truncate(&s, 4);
+        let result = truncate(s, 4);
         assert_eq!(result, "aaaa...");
         assert!(!result.contains('—'));
     }
