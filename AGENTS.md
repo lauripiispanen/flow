@@ -78,22 +78,23 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
-**In Progress**: Phase 2 (iteration context, multi-step cycles, flow init, flow plan)
-**Next**: Iteration context → multi-step cycles → flow init → flow plan
+**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood | Multi-Step Cycles (session affinity, step executor, per-step permissions)
+**In Progress**: Phase 2 (multi-step cycle plan+review steps, flow init, flow plan)
+**Next**: Add plan+plan-review steps to coding cycle → LLM-driven step routing → flow init
 
 **Test Status**:
-- ✅ 203 passing (182 lib + 15 main + 6 integration)
+- ✅ 270 passing (249 lib + 15 main + 6 integration)
 
 **Component Status**:
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (29 tests + 10 perm validation + 3 min_interval)
-Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests)
-Cycle Executor         | ✅ | src/cycle/executor.rs (16 tests)
-Claude CLI Builder     | ✅ | src/claude/cli.rs (8 tests)
-Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
+Cycle Config Parser    | ✅ | src/cycle/config.rs (41 tests: +8 multi-step, StepConfig, is_multi_step)
+Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests + resolve_step_permissions)
+Session Manager        | ✅ | src/claude/session.rs (9 tests, tag→ID mapping, --resume args)
+Cycle Executor         | ✅ | src/cycle/executor.rs (25 tests, single+multi-step execution)
+Claude CLI Builder     | ✅ | src/claude/cli.rs (10 tests, build_command_with_session)
+Stream-JSON Parser    | ✅ | src/claude/stream.rs (26 tests, captures session_id in accumulator)
 Rich CLI Display      | ✅ | src/cli/display.rs (28 tests, includes status bar + health colors + doctor display)
-JSONL Logger          | ✅ | src/log/jsonl.rs (12 tests)
+JSONL Logger          | ✅ | src/log/jsonl.rs (15 tests, StepOutcome + CycleOutcome.steps)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
 Cycle Selector        | ✅ | src/cycle/selector.rs (27 tests, AI-driven cycle selection)
 Doctor Diagnostics    | ✅ | src/doctor.rs (14 tests)
@@ -246,10 +247,10 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 ## Quick Wins for New Contributors
 
-**Phase 1 is complete. Phase 2 is partially complete** (status bar, doctor, multi-iteration, cycle selector all done). Remaining Phase 2 tasks:
+**Phase 1 is complete. Phase 2 is partially complete** (status bar, doctor, multi-iteration, cycle selector, multi-step cycles all done). Remaining Phase 2 tasks:
 
-**Medium**: Iteration context — wire the `context` config field to inject log history into cycle prompts
-**Medium**: Multi-step cycles — step executor with session affinity → `src/cycle/executor.rs`
+**Medium**: Add plan + plan-review steps to coding cycle → extend `cycles.toml`, depends on multi-step executor (done)
+**Medium**: LLM-driven step routing — `router = "llm"` field for conditional branching after steps
 **Easy**: `flow init` — scaffold cycles.toml + .flow/ for new projects → `src/init.rs` (new)
 **Medium**: `flow plan` — quick idea capture + interactive deep planning → `src/plan.rs` (new)
 
@@ -257,4 +258,4 @@ See [TODO.md](./TODO.md) for full task list.
 
 ---
 
-**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (status bar, doctor, multi-iteration, cycle selector done) | **Next Milestone**: Iteration context + multi-step cycles
+**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (status bar, doctor, multi-iteration, cycle selector, multi-step cycles done) | **Next Milestone**: Plan+plan-review steps in coding cycle
