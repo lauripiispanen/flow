@@ -12,22 +12,7 @@ use crate::cycle::config::{CycleConfig, GlobalConfig, StepConfig};
 /// permissions first, followed by any cycle-specific additions.
 #[must_use]
 pub fn resolve_permissions(global: &GlobalConfig, cycle: &CycleConfig) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-
-    for perm in &global.permissions {
-        if seen.insert(perm.as_str()) {
-            result.push(perm.clone());
-        }
-    }
-
-    for perm in &cycle.permissions {
-        if seen.insert(perm.as_str()) {
-            result.push(perm.clone());
-        }
-    }
-
-    result
+    merge_permissions([global.permissions.as_slice(), cycle.permissions.as_slice()])
 }
 
 /// Resolve the effective permissions for a step by merging global, cycle, and step permissions.
@@ -41,27 +26,24 @@ pub fn resolve_step_permissions(
     cycle: &CycleConfig,
     step: &StepConfig,
 ) -> Vec<String> {
+    merge_permissions([
+        global.permissions.as_slice(),
+        cycle.permissions.as_slice(),
+        step.permissions.as_slice(),
+    ])
+}
+
+/// Merge permission slices into a deduplicated list, preserving insertion order.
+fn merge_permissions<const N: usize>(layers: [&[String]; N]) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
-
-    for perm in &global.permissions {
-        if seen.insert(perm.as_str()) {
-            result.push(perm.clone());
+    for layer in layers {
+        for perm in layer {
+            if seen.insert(perm.as_str()) {
+                result.push(perm.clone());
+            }
         }
     }
-
-    for perm in &cycle.permissions {
-        if seen.insert(perm.as_str()) {
-            result.push(perm.clone());
-        }
-    }
-
-    for perm in &step.permissions {
-        if seen.insert(perm.as_str()) {
-            result.push(perm.clone());
-        }
-    }
-
     result
 }
 
