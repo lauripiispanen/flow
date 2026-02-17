@@ -80,7 +80,6 @@ async fn test_coding_cycle_end_to_end() {
         cycle_name: prepared.cycle_name.clone(),
         success: exit_code == Some(0),
         exit_code,
-        stdout,
         stderr,
         duration_secs,
         result_text: None,
@@ -138,7 +137,7 @@ async fn test_failed_cycle_logged_correctly() {
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg("echo 'error occurred' >&2; exit 1");
 
-    let (stdout, stderr, exit_code, duration_secs) =
+    let (_stdout, stderr, exit_code, duration_secs) =
         flow::cycle::executor::run_command(cmd).await.unwrap();
 
     assert_eq!(exit_code, Some(1));
@@ -148,7 +147,6 @@ async fn test_failed_cycle_logged_correctly() {
         cycle_name: prepared.cycle_name.clone(),
         success: exit_code == Some(0),
         exit_code,
-        stdout,
         stderr,
         duration_secs,
         result_text: None,
@@ -204,14 +202,13 @@ async fn test_gardening_auto_triggers_after_coding() {
 
     let mut cmd = Command::new("echo");
     cmd.arg("coding done");
-    let (stdout, stderr, exit_code, duration_secs) =
+    let (_stdout, stderr, exit_code, duration_secs) =
         flow::cycle::executor::run_command(cmd).await.unwrap();
 
     let coding_result = flow::CycleResult {
         cycle_name: coding_prepared.cycle_name.clone(),
         success: exit_code == Some(0),
         exit_code,
-        stdout,
         stderr,
         duration_secs,
         result_text: None,
@@ -254,14 +251,13 @@ async fn test_gardening_auto_triggers_after_coding() {
 
         let mut cmd = Command::new("echo");
         cmd.arg("gardening done");
-        let (stdout, stderr, exit_code, duration_secs) =
+        let (_stdout, stderr, exit_code, duration_secs) =
             flow::cycle::executor::run_command(cmd).await.unwrap();
 
         let dep_result = flow::CycleResult {
             cycle_name: dep_prepared.cycle_name.clone(),
             success: exit_code == Some(0),
             exit_code,
-            stdout,
             stderr,
             duration_secs,
             result_text: None,
@@ -354,14 +350,13 @@ async fn test_multiple_iterations_logged() {
 
         let mut cmd = Command::new("echo");
         cmd.arg(format!("{cycle_name} iteration"));
-        let (stdout, stderr, exit_code, duration_secs) =
+        let (_stdout, stderr, exit_code, duration_secs) =
             flow::cycle::executor::run_command(cmd).await.unwrap();
 
         let result = flow::CycleResult {
             cycle_name: prepared.cycle_name.clone(),
             success: exit_code == Some(0),
             exit_code,
-            stdout,
             stderr,
             duration_secs,
             result_text: None,

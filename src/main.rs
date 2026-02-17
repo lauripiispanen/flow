@@ -431,7 +431,7 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: true,
             exit_code: Some(0),
-            stdout: "done".to_string(),
+
             stderr: String::new(),
             duration_secs: 120,
             result_text: None,
@@ -455,7 +455,7 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: false,
             exit_code: Some(1),
-            stdout: String::new(),
+
             stderr: "error".to_string(),
             duration_secs: 30,
             result_text: None,
@@ -476,7 +476,7 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: false,
             exit_code: None,
-            stdout: String::new(),
+
             stderr: String::new(),
             duration_secs: 5,
             result_text: None,
@@ -496,7 +496,7 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: true,
             exit_code: Some(0),
-            stdout: String::new(),
+
             stderr: String::new(),
             duration_secs: 120,
             result_text: Some("Implemented feature X with 5 tests".to_string()),

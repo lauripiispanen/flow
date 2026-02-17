@@ -40,8 +40,6 @@ pub struct CycleResult {
     pub success: bool,
     /// Process exit code (None if killed by signal)
     pub exit_code: Option<i32>,
-    /// Captured stdout output
-    pub stdout: String,
     /// Captured stderr output
     pub stderr: String,
     /// Duration of the cycle in seconds
@@ -255,7 +253,6 @@ impl CycleExecutor {
             cycle_name: cycle_name.to_string(),
             success: last_exit_code == Some(0),
             exit_code: last_exit_code,
-            stdout: String::new(),
             stderr: combined_stderr,
             duration_secs: total_duration_secs,
             result_text: last_result_text,
@@ -317,7 +314,6 @@ fn build_cycle_result(
         cycle_name,
         success: exit_code == Some(0),
         exit_code,
-        stdout: String::new(),
         stderr,
         duration_secs,
         result_text,
@@ -696,7 +692,6 @@ permissions = []
             cycle_name: "test".to_string(),
             success: true,
             exit_code: Some(0),
-            stdout: String::new(),
             stderr: String::new(),
             duration_secs: 0,
             result_text: None,
@@ -717,7 +712,6 @@ permissions = []
             cycle_name: "coding".to_string(),
             success: true,
             exit_code: Some(0),
-            stdout: String::new(),
             stderr: String::new(),
             duration_secs: 120,
             result_text: Some("Implemented feature X".to_string()),
