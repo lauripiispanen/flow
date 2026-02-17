@@ -193,6 +193,27 @@ pub fn suggest_permission_fix(tool_name: &str) -> String {
     }
 }
 
+/// Parse the number of passed tests from a cargo test output line.
+///
+/// Recognizes the pattern `test result: ... N passed;` produced by `cargo test`.
+/// Returns `None` if the content does not contain a recognized cargo test summary.
+fn parse_tests_passed(content: &str) -> Option<u32> {
+    // Look for "N passed" in cargo test output (e.g. "test result: ok. 42 passed; 0 failed")
+    let passed_idx = content.find(" passed")?;
+    // Walk backwards from "passed" to find the start of the number
+    let before = &content[..passed_idx];
+    let number_start = before.rfind(|c: char| !c.is_ascii_digit())?;
+    let number_str = &before[number_start + 1..];
+    if number_str.is_empty() {
+        return None;
+    }
+    // Only parse if this looks like cargo test output (contains "test result")
+    if !content.contains("test result") {
+        return None;
+    }
+    number_str.parse().ok()
+}
+
 /// Accumulator for stream events — collects data across events for final summary.
 #[derive(Debug, Default)]
 pub struct StreamAccumulator {
@@ -206,6 +227,10 @@ pub struct StreamAccumulator {
     pub result: Option<StreamEvent>,
     /// Session ID from `SystemInit` event (used for session affinity in multi-step cycles)
     pub session_id: Option<String>,
+    /// Files modified during the session (from `Edit`/`Write` `ToolUse` events, deduplicated)
+    pub files_changed: Vec<String>,
+    /// Total number of tests passed, parsed from cargo test output in `ToolResult` content
+    pub tests_passed: u32,
 }
 
 impl StreamAccumulator {
@@ -224,14 +249,29 @@ impl StreamAccumulator {
             StreamEvent::AssistantText { text } => {
                 self.text_fragments.push(text.clone());
             }
-            StreamEvent::ToolUse { tool_name, .. } => {
+            StreamEvent::ToolUse { tool_name, input } => {
                 self.tools_used.push(tool_name.clone());
+                if matches!(tool_name.as_str(), "Edit" | "Write") {
+                    if let Some(path) = input.get("file_path").and_then(Value::as_str) {
+                        if !self.files_changed.contains(&path.to_string()) {
+                            self.files_changed.push(path.to_string());
+                        }
+                    }
+                }
             }
             StreamEvent::ToolResult {
                 is_error: true,
                 content,
             } => {
                 self.tool_errors.push(content.clone());
+            }
+            StreamEvent::ToolResult {
+                is_error: false,
+                content,
+            } => {
+                if let Some(count) = parse_tests_passed(content) {
+                    self.tests_passed = self.tests_passed.saturating_add(count);
+                }
             }
             StreamEvent::Result { .. } => {
                 self.result = Some(event.clone());
@@ -541,5 +581,162 @@ mod tests {
     fn test_accumulator_session_id_default_is_none() {
         let acc = StreamAccumulator::new();
         assert!(acc.session_id.is_none());
+    }
+
+    // --- files_changed tracking tests ---
+
+    #[test]
+    fn test_accumulator_tracks_edit_file_path() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        assert_eq!(acc.files_changed, vec!["src/main.rs"]);
+    }
+
+    #[test]
+    fn test_accumulator_tracks_write_file_path() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Write".to_string(),
+            input: serde_json::json!({"file_path": "src/lib.rs"}),
+        });
+        assert_eq!(acc.files_changed, vec!["src/lib.rs"]);
+    }
+
+    #[test]
+    fn test_accumulator_deduplicates_files_changed() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        assert_eq!(acc.files_changed, vec!["src/main.rs"]);
+    }
+
+    #[test]
+    fn test_accumulator_does_not_track_read_tool() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Read".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        assert!(acc.files_changed.is_empty());
+    }
+
+    #[test]
+    fn test_accumulator_does_not_track_bash_tool() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Bash".to_string(),
+            input: serde_json::json!({"command": "cargo test"}),
+        });
+        assert!(acc.files_changed.is_empty());
+    }
+
+    #[test]
+    fn test_accumulator_files_changed_default_is_empty() {
+        let acc = StreamAccumulator::new();
+        assert!(acc.files_changed.is_empty());
+    }
+
+    #[test]
+    fn test_accumulator_tracks_multiple_different_files() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Write".to_string(),
+            input: serde_json::json!({"file_path": "src/lib.rs"}),
+        });
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "tests/integration_test.rs"}),
+        });
+        assert_eq!(
+            acc.files_changed,
+            vec!["src/main.rs", "src/lib.rs", "tests/integration_test.rs"]
+        );
+    }
+
+    #[test]
+    fn test_accumulator_ignores_edit_without_file_path() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({}),
+        });
+        assert!(acc.files_changed.is_empty());
+    }
+
+    // --- tests_passed tracking tests ---
+
+    #[test]
+    fn test_accumulator_tracks_tests_passed_from_cargo_output() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "test result: ok. 42 passed; 0 failed; 0 ignored".to_string(),
+        });
+        assert_eq!(acc.tests_passed, 42);
+    }
+
+    #[test]
+    fn test_accumulator_accumulates_tests_passed_across_multiple_results() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "test result: ok. 10 passed; 0 failed; 0 ignored".to_string(),
+        });
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "test result: ok. 5 passed; 0 failed; 0 ignored".to_string(),
+        });
+        assert_eq!(acc.tests_passed, 15);
+    }
+
+    #[test]
+    fn test_accumulator_tests_passed_default_is_zero() {
+        let acc = StreamAccumulator::new();
+        assert_eq!(acc.tests_passed, 0);
+    }
+
+    #[test]
+    fn test_accumulator_ignores_non_cargo_tool_result_content() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "File saved successfully".to_string(),
+        });
+        assert_eq!(acc.tests_passed, 0);
+    }
+
+    #[test]
+    fn test_accumulator_ignores_cargo_failure_results() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "test result: FAILED. 5 passed; 2 failed; 0 ignored".to_string(),
+        });
+        // Even for failures, count the passed tests
+        assert_eq!(acc.tests_passed, 5);
+    }
+
+    #[test]
+    fn test_accumulator_ignores_error_tool_results_for_tests_passed() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolResult {
+            is_error: true,
+            content: "test result: ok. 10 passed; 0 failed".to_string(),
+        });
+        // Error results are not counted for tests_passed (they're permission denials)
+        assert_eq!(acc.tests_passed, 0);
     }
 }

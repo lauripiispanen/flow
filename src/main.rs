@@ -86,8 +86,8 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
         cycle: result.cycle_name.clone(),
         timestamp: chrono::Utc::now(),
         outcome: outcome_text,
-        files_changed: vec![],
-        tests_passed: 0,
+        files_changed: result.files_changed.clone(),
+        tests_passed: result.tests_passed,
         duration_secs: result.duration_secs,
         num_turns: result.num_turns,
         total_cost_usd: result.total_cost_usd,
@@ -431,7 +431,6 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: true,
             exit_code: Some(0),
-
             stderr: String::new(),
             duration_secs: 120,
             result_text: None,
@@ -439,6 +438,8 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -455,7 +456,6 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: false,
             exit_code: Some(1),
-
             stderr: "error".to_string(),
             duration_secs: 30,
             result_text: None,
@@ -463,6 +463,8 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
 
         let outcome = build_outcome(&result, 3);
@@ -476,7 +478,6 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: false,
             exit_code: None,
-
             stderr: String::new(),
             duration_secs: 5,
             result_text: None,
@@ -484,6 +485,8 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -496,7 +499,6 @@ mod tests {
             cycle_name: "coding".to_string(),
             success: true,
             exit_code: Some(0),
-
             stderr: String::new(),
             duration_secs: 120,
             result_text: Some("Implemented feature X with 5 tests".to_string()),
@@ -508,6 +510,8 @@ mod tests {
                 "Bash".to_string(),
                 "Edit".to_string(),
             ]),
+            files_changed: vec!["src/main.rs".to_string()],
+            tests_passed: 0,
         };
 
         let outcome = build_outcome(&result, 1);
@@ -516,6 +520,54 @@ mod tests {
         assert_eq!(outcome.total_cost_usd, Some(2.15));
         assert_eq!(outcome.permission_denial_count, Some(3));
         assert_eq!(outcome.permission_denials.as_ref().unwrap().len(), 3);
+        assert_eq!(outcome.files_changed, vec!["src/main.rs"]);
+    }
+
+    #[test]
+    fn test_build_outcome_propagates_files_changed() {
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stderr: String::new(),
+            duration_secs: 60,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+            files_changed: vec![
+                "src/main.rs".to_string(),
+                "src/lib.rs".to_string(),
+                "tests/foo.rs".to_string(),
+            ],
+            tests_passed: 0,
+        };
+        let outcome = build_outcome(&result, 1);
+        assert_eq!(
+            outcome.files_changed,
+            vec!["src/main.rs", "src/lib.rs", "tests/foo.rs"]
+        );
+    }
+
+    #[test]
+    fn test_build_outcome_propagates_tests_passed() {
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stderr: String::new(),
+            duration_secs: 60,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 99,
+        };
+        let outcome = build_outcome(&result, 1);
+        assert_eq!(outcome.tests_passed, 99);
     }
 
     #[test]

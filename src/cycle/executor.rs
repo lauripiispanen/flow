@@ -54,6 +54,10 @@ pub struct CycleResult {
     pub permission_denial_count: Option<u32>,
     /// List of denied tool names (e.g., `["Edit", "Bash"]`)
     pub permission_denials: Option<Vec<String>>,
+    /// Files modified during the cycle (deduplicated, from Edit/Write tool uses)
+    pub files_changed: Vec<String>,
+    /// Total number of tests that passed, parsed from cargo test output in tool results
+    pub tests_passed: u32,
 }
 
 /// Executes cycles by invoking Claude Code CLI
@@ -187,6 +191,8 @@ impl CycleExecutor {
         let mut total_cost: f64 = 0.0;
         let mut total_denials: u32 = 0;
         let mut all_denials: Vec<String> = Vec::new();
+        let mut all_files_changed: Vec<String> = Vec::new();
+        let mut total_tests_passed: u32 = 0;
         let mut last_result_text: Option<String> = None;
         let mut last_exit_code: Option<i32> = None;
         let mut combined_stderr = String::new();
@@ -241,6 +247,15 @@ impl CycleExecutor {
                 all_denials.extend(permission_denials.clone());
             }
 
+            // Aggregate files changed across steps (deduplicated)
+            for file in &accumulator.files_changed {
+                if !all_files_changed.contains(file) {
+                    all_files_changed.push(file.clone());
+                }
+            }
+
+            total_tests_passed = total_tests_passed.saturating_add(accumulator.tests_passed);
+
             last_exit_code = exit_code;
 
             // Fail-fast: stop if this step failed
@@ -276,6 +291,8 @@ impl CycleExecutor {
             } else {
                 Some(all_denials)
             },
+            files_changed: all_files_changed,
+            tests_passed: total_tests_passed,
         })
     }
 }
@@ -321,6 +338,8 @@ fn build_cycle_result(
         total_cost_usd,
         permission_denial_count: denial_count,
         permission_denials: denials,
+        files_changed: accumulator.files_changed.clone(),
+        tests_passed: accumulator.tests_passed,
     }
 }
 
@@ -699,11 +718,15 @@ permissions = []
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
         assert!(result.result_text.is_none());
         assert!(result.num_turns.is_none());
         assert!(result.total_cost_usd.is_none());
         assert!(result.permission_denial_count.is_none());
+        assert!(result.files_changed.is_empty());
+        assert_eq!(result.tests_passed, 0);
     }
 
     #[test]
@@ -723,12 +746,16 @@ permissions = []
                 "Bash".to_string(),
                 "Edit".to_string(),
             ]),
+            files_changed: vec!["src/main.rs".to_string(), "src/lib.rs".to_string()],
+            tests_passed: 42,
         };
         assert_eq!(result.result_text.as_deref(), Some("Implemented feature X"));
         assert_eq!(result.num_turns, Some(53));
         assert_eq!(result.total_cost_usd, Some(2.15));
         assert_eq!(result.permission_denial_count, Some(3));
         assert_eq!(result.permission_denials.as_ref().unwrap().len(), 3);
+        assert_eq!(result.files_changed, vec!["src/main.rs", "src/lib.rs"]);
+        assert_eq!(result.tests_passed, 42);
     }
 
     // --- multi-step cycle config tests ---
@@ -894,5 +921,27 @@ permissions = ["Edit(./src/**)"]
         assert_eq!(*num_turns, 10);
         assert!((total_cost_usd - 2.50).abs() < f64::EPSILON);
         assert_eq!(result_text, "Task completed");
+    }
+
+    #[tokio::test]
+    async fn test_run_command_with_display_captures_files_changed() {
+        let display = CycleDisplay::new("test");
+        let mut status_line = StatusLine::new("test");
+        // Simulate Edit and Write tool uses followed by a result
+        let lines = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"src/lib.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs"}}]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"result":"Done","total_cost_usd":1.0,"duration_ms":1000,"permission_denials":[]}"#;
+
+        let mut cmd = std::process::Command::new("echo");
+        cmd.arg(lines);
+
+        let (acc, _stderr, _exit_code, _duration) =
+            run_command_with_display(cmd, &display, &mut status_line, 5)
+                .await
+                .unwrap();
+
+        // src/main.rs appears twice but should be deduplicated
+        assert_eq!(acc.files_changed, vec!["src/main.rs", "src/lib.rs"]);
     }
 }

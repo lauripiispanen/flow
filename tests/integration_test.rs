@@ -87,6 +87,8 @@ async fn test_coding_cycle_end_to_end() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        files_changed: vec![],
+        tests_passed: 0,
     };
 
     let outcome = CycleOutcome {
@@ -154,6 +156,8 @@ async fn test_failed_cycle_logged_correctly() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        files_changed: vec![],
+        tests_passed: 0,
     };
 
     let outcome = CycleOutcome {
@@ -216,6 +220,8 @@ async fn test_gardening_auto_triggers_after_coding() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        files_changed: vec![],
+        tests_passed: 0,
     };
 
     // Log coding result
@@ -265,6 +271,8 @@ async fn test_gardening_auto_triggers_after_coding() {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
 
         let dep_outcome = CycleOutcome {
@@ -364,6 +372,8 @@ async fn test_multiple_iterations_logged() {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
         };
 
         let outcome = CycleOutcome {
