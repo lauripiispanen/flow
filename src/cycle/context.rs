@@ -94,25 +94,7 @@ pub fn inject_context(prompt: &str, context: Option<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::log::jsonl::CycleOutcome;
-    use chrono::Utc;
-
-    fn make_outcome(iteration: u32, cycle: &str, outcome: &str) -> CycleOutcome {
-        CycleOutcome {
-            iteration,
-            cycle: cycle.to_string(),
-            timestamp: Utc::now(),
-            outcome: outcome.to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 60,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        }
-    }
+    use crate::testutil::make_test_outcome as make_outcome;
 
     // --- build_context: ContextMode::None ---
 

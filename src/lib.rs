@@ -12,6 +12,8 @@ pub mod cycle;
 pub mod doctor;
 pub mod init;
 pub mod log;
+#[cfg(test)]
+pub mod testutil;
 
 // Re-export commonly used types
 pub use claude::cli::{build_command, build_command_with_session};

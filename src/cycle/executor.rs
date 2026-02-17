@@ -586,22 +586,7 @@ permissions = []
 
     // --- prepare_with_context tests ---
 
-    fn make_outcome(iteration: u32, cycle: &str, outcome: &str) -> crate::log::jsonl::CycleOutcome {
-        crate::log::jsonl::CycleOutcome {
-            iteration,
-            cycle: cycle.to_string(),
-            timestamp: chrono::Utc::now(),
-            outcome: outcome.to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 60,
-            num_turns: None,
-            total_cost_usd: None,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        }
-    }
+    use crate::testutil::make_test_outcome as make_outcome;
 
     #[test]
     fn test_prepare_with_context_injects_summaries() {
@@ -943,5 +928,83 @@ permissions = ["Edit(./src/**)"]
 
         // src/main.rs appears twice but should be deduplicated
         assert_eq!(acc.files_changed, vec!["src/main.rs", "src/lib.rs"]);
+    }
+
+    // --- build_cycle_result tests ---
+
+    #[test]
+    fn test_build_cycle_result_with_result_event() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::ToolUse {
+            tool_name: "Edit".to_string(),
+            input: serde_json::json!({"file_path": "src/main.rs"}),
+        });
+        acc.process(&StreamEvent::ToolResult {
+            is_error: false,
+            content: "test result: ok. 10 passed; 0 failed; 0 ignored".to_string(),
+        });
+        acc.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Implemented feature".to_string(),
+            num_turns: 5,
+            total_cost_usd: 1.23,
+            duration_ms: 30000,
+            permission_denials: vec!["Bash".to_string()],
+        });
+
+        let result = build_cycle_result("coding".to_string(), Some(0), String::new(), 120, &acc);
+
+        assert_eq!(result.cycle_name, "coding");
+        assert!(result.success);
+        assert_eq!(result.exit_code, Some(0));
+        assert_eq!(result.duration_secs, 120);
+        assert_eq!(result.result_text.as_deref(), Some("Implemented feature"));
+        assert_eq!(result.num_turns, Some(5));
+        assert_eq!(result.total_cost_usd, Some(1.23));
+        assert_eq!(result.permission_denial_count, Some(1));
+        assert_eq!(result.permission_denials, Some(vec!["Bash".to_string()]));
+        assert_eq!(result.files_changed, vec!["src/main.rs"]);
+        assert_eq!(result.tests_passed, 10);
+    }
+
+    #[test]
+    fn test_build_cycle_result_without_result_event() {
+        let acc = StreamAccumulator::new();
+        let result = build_cycle_result(
+            "coding".to_string(),
+            Some(1),
+            "error output".to_string(),
+            30,
+            &acc,
+        );
+
+        assert!(!result.success);
+        assert_eq!(result.exit_code, Some(1));
+        assert_eq!(result.stderr, "error output");
+        assert!(result.result_text.is_none());
+        assert!(result.num_turns.is_none());
+        assert!(result.total_cost_usd.is_none());
+        assert!(result.permission_denial_count.is_none());
+        assert!(result.permission_denials.is_none());
+        assert!(result.files_changed.is_empty());
+        assert_eq!(result.tests_passed, 0);
+    }
+
+    #[test]
+    fn test_build_cycle_result_empty_denials_become_none() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Done".to_string(),
+            num_turns: 3,
+            total_cost_usd: 0.50,
+            duration_ms: 10000,
+            permission_denials: vec![],
+        });
+
+        let result = build_cycle_result("review".to_string(), Some(0), String::new(), 10, &acc);
+
+        assert!(result.permission_denials.is_none());
+        assert_eq!(result.permission_denial_count, Some(0));
     }
 }

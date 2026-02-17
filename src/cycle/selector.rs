@@ -391,23 +391,14 @@ pub async fn select_cycle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use crate::testutil::make_test_outcome;
 
     fn make_outcome(iteration: u32, cycle: &str, outcome: &str, cost: Option<f64>) -> CycleOutcome {
-        CycleOutcome {
-            iteration,
-            cycle: cycle.to_string(),
-            timestamp: Utc::now(),
-            outcome: outcome.to_string(),
-            files_changed: vec![],
-            tests_passed: 0,
-            duration_secs: 120,
-            num_turns: Some(30),
-            total_cost_usd: cost,
-            permission_denial_count: None,
-            permission_denials: None,
-            steps: None,
-        }
+        let mut o = make_test_outcome(iteration, cycle, outcome);
+        o.duration_secs = 120;
+        o.num_turns = Some(30);
+        o.total_cost_usd = cost;
+        o
     }
 
     fn make_config(cycle_names: &[&str]) -> FlowConfig {
