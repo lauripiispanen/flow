@@ -42,6 +42,21 @@ const fn default_circuit_breaker_repeated() -> u32 {
     5
 }
 
+/// A single step within a multi-step cycle
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StepConfig {
+    /// Unique name for this step within the cycle
+    pub name: String,
+    /// Optional session tag — steps sharing the same tag continue the same Claude session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The prompt to send to Claude Code for this step
+    pub prompt: String,
+    /// Additional permissions for this step (additive to global + cycle)
+    #[serde(default)]
+    pub permissions: Vec<String>,
+}
+
 /// A single cycle definition
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CycleConfig {
@@ -49,7 +64,8 @@ pub struct CycleConfig {
     pub name: String,
     /// Human-readable description
     pub description: String,
-    /// The prompt to send to Claude Code
+    /// The prompt to send to Claude Code (used for single-step cycles; empty for multi-step)
+    #[serde(default)]
     pub prompt: String,
     /// Additional permissions for this cycle (additive to global)
     #[serde(default)]
@@ -64,10 +80,24 @@ pub struct CycleConfig {
     /// None means no constraint (always eligible).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_interval: Option<u32>,
+    /// Steps for multi-step cycles. Empty means single-step (uses top-level `prompt`).
+    #[serde(default, rename = "step")]
+    pub steps: Vec<StepConfig>,
 }
 
 const fn default_context() -> ContextMode {
     ContextMode::None
+}
+
+impl CycleConfig {
+    /// Returns `true` if this cycle has explicit steps (multi-step cycle).
+    ///
+    /// Single-step cycles use the top-level `prompt` field. Multi-step cycles
+    /// define `[[cycle.step]]` entries and have an empty `prompt`.
+    #[must_use]
+    pub const fn is_multi_step(&self) -> bool {
+        !self.steps.is_empty()
+    }
 }
 
 /// Top-level Flow configuration parsed from cycles.toml
@@ -142,6 +172,53 @@ impl FlowConfig {
         for cycle in &self.cycles {
             for perm in &cycle.permissions {
                 validate_permission(perm).with_context(|| format!("in cycle '{}'", cycle.name))?;
+            }
+        }
+
+        // Validate that every cycle has either a prompt (single-step) or steps (multi-step)
+        for cycle in &self.cycles {
+            if cycle.steps.is_empty() && cycle.prompt.is_empty() {
+                bail!(
+                    "Cycle '{}' must have a 'prompt' (single-step) or '[[cycle.step]]' entries (multi-step)",
+                    cycle.name
+                );
+            }
+        }
+
+        // Validate multi-step cycle constraints
+        for cycle in &self.cycles {
+            if !cycle.steps.is_empty() {
+                // Multi-step cycle: prompt must not also be set
+                if !cycle.prompt.is_empty() {
+                    bail!(
+                        "Cycle '{}' cannot have both a top-level 'prompt' and '[[cycle.step]]' entries",
+                        cycle.name
+                    );
+                }
+
+                // Step names must be unique and non-empty
+                let mut step_names = HashSet::new();
+                for step in &cycle.steps {
+                    if step.name.trim().is_empty() {
+                        bail!("Step name cannot be empty in cycle '{}'", cycle.name);
+                    }
+                    if !step_names.insert(step.name.as_str()) {
+                        bail!(
+                            "Duplicate step name '{}' in cycle '{}'",
+                            step.name,
+                            cycle.name
+                        );
+                    }
+                }
+
+                // Validate step permissions
+                for step in &cycle.steps {
+                    for perm in &step.permissions {
+                        validate_permission(perm).with_context(|| {
+                            format!("in step '{}' of cycle '{}'", step.name, cycle.name)
+                        })?;
+                    }
+                }
             }
         }
 
@@ -395,10 +472,12 @@ permissions = []
 name = "coding"
 "#;
         let err = FlowConfig::parse(toml).unwrap_err();
-        // toml crate should report a parse error for missing required fields
+        // Either TOML parse error (missing description) or our validation error (no prompt/steps)
         let msg = err.to_string();
         assert!(
-            msg.contains("missing field") || msg.contains("Failed to parse"),
+            msg.contains("missing field")
+                || msg.contains("Failed to parse")
+                || msg.contains("must have"),
             "Expected parse error for missing fields, got: {msg}"
         );
     }
@@ -727,5 +806,216 @@ description = "Test"
 prompt = "Test"
 "#;
         assert!(FlowConfig::parse(toml).is_ok());
+    }
+
+    // --- Multi-step cycle config tests ---
+
+    #[test]
+    fn test_parse_multi_step_cycle() {
+        let toml = r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Multi-step coding cycle"
+after = []
+
+[[cycle.step]]
+name = "plan"
+session = "architect"
+prompt = "Read TODO.md and write a plan."
+permissions = ["Edit(./.flow/current-plan.md)"]
+
+[[cycle.step]]
+name = "implement"
+session = "coder"
+prompt = "Read the plan and implement it."
+permissions = ["Edit(./src/**)", "Bash(cargo *)"]
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.steps.len(), 2);
+        assert_eq!(coding.steps[0].name, "plan");
+        assert_eq!(coding.steps[0].session, Some("architect".to_string()));
+        assert_eq!(coding.steps[0].prompt, "Read TODO.md and write a plan.");
+        assert_eq!(
+            coding.steps[0].permissions,
+            vec!["Edit(./.flow/current-plan.md)"]
+        );
+        assert_eq!(coding.steps[1].name, "implement");
+    }
+
+    #[test]
+    fn test_single_step_cycle_has_empty_steps() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "You are gardening."
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let gardening = config.get_cycle("gardening").unwrap();
+        assert!(gardening.steps.is_empty());
+        assert_eq!(gardening.prompt, "You are gardening.");
+    }
+
+    #[test]
+    fn test_step_without_session_tag_is_valid() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "implement"
+prompt = "Implement the task."
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.steps[0].session, None);
+    }
+
+    #[test]
+    fn test_reject_multi_step_cycle_with_top_level_prompt() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "This should not be here alongside steps."
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("cannot have both"),
+            "Expected 'cannot have both' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_cycle_without_prompt_and_without_steps() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("must have") || msg.contains("missing field") || msg.contains("prompt"),
+            "Expected error about missing prompt or steps, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_reject_duplicate_step_names_within_cycle() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+
+[[cycle.step]]
+name = "plan"
+prompt = "Also plan."
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("Duplicate step name"),
+            "Expected 'Duplicate step name' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_step_name() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = ""
+prompt = "Plan."
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("empty"),
+            "Expected 'empty' error for step name, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_multi_step_cycle_has_no_top_level_prompt() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert!(coding.prompt.is_empty());
+    }
+
+    #[test]
+    fn test_step_permissions_validated() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+permissions = ["not-valid"]
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("Invalid permission"),
+            "Expected 'Invalid permission' error for step permission, got: {msg}"
+        );
+        assert!(
+            msg.contains("in step 'plan'"),
+            "Expected step context in error, got: {msg}"
+        );
     }
 }

@@ -204,6 +204,8 @@ pub struct StreamAccumulator {
     pub tool_errors: Vec<String>,
     /// Final result (populated from Result event)
     pub result: Option<StreamEvent>,
+    /// Session ID from `SystemInit` event (used for session affinity in multi-step cycles)
+    pub session_id: Option<String>,
 }
 
 impl StreamAccumulator {
@@ -216,6 +218,9 @@ impl StreamAccumulator {
     /// Process a stream event and accumulate relevant data
     pub fn process(&mut self, event: &StreamEvent) {
         match event {
+            StreamEvent::SystemInit { session_id, .. } => {
+                self.session_id = Some(session_id.clone());
+            }
             StreamEvent::AssistantText { text } => {
                 self.text_fragments.push(text.clone());
             }
@@ -520,5 +525,21 @@ mod tests {
     fn test_accumulator_permission_denial_count_no_result() {
         let acc = StreamAccumulator::new();
         assert_eq!(acc.permission_denial_count(), 0);
+    }
+
+    #[test]
+    fn test_accumulator_captures_session_id() {
+        let mut acc = StreamAccumulator::new();
+        acc.process(&StreamEvent::SystemInit {
+            model: "claude-opus-4-6".to_string(),
+            session_id: "test-session-abc".to_string(),
+        });
+        assert_eq!(acc.session_id.as_deref(), Some("test-session-abc"));
+    }
+
+    #[test]
+    fn test_accumulator_session_id_default_is_none() {
+        let acc = StreamAccumulator::new();
+        assert!(acc.session_id.is_none());
     }
 }

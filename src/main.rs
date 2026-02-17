@@ -90,6 +90,7 @@ fn build_outcome(result: &flow::CycleResult, iteration: u32) -> CycleOutcome {
         total_cost_usd: result.total_cost_usd,
         permission_denial_count: result.permission_denial_count,
         permission_denials: result.permission_denials.clone(),
+        steps: None,
     }
 }
 

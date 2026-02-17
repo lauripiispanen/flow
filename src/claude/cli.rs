@@ -12,7 +12,25 @@ use std::process::Command;
 /// and `--allowedTools` for each resolved permission string.
 #[must_use]
 pub fn build_command(prompt: &str, permissions: &[String]) -> Command {
+    build_command_with_session(prompt, permissions, &[])
+}
+
+/// Build a `Command` to invoke Claude Code, optionally resuming an existing session.
+///
+/// Like `build_command` but prepends `resume_args` (e.g., `["--resume", "<session_id>"]`)
+/// to continue a prior Claude Code session. An empty `resume_args` slice produces the
+/// same command as `build_command`.
+#[must_use]
+pub fn build_command_with_session(
+    prompt: &str,
+    permissions: &[String],
+    resume_args: &[String],
+) -> Command {
     let mut cmd = Command::new("claude");
+
+    for arg in resume_args {
+        cmd.arg(arg);
+    }
 
     cmd.arg("-p").arg(prompt);
     cmd.arg("--verbose");
@@ -135,5 +153,30 @@ mod tests {
             args.contains(&"--verbose"),
             "Expected --verbose flag (required for stream-json with -p), got: {args:?}"
         );
+    }
+
+    #[test]
+    fn test_build_with_resume_args_includes_resume_flag() {
+        let resume = vec!["--resume".to_string(), "abc-123".to_string()];
+        let cmd = super::build_command_with_session("Code", &[], &resume);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+
+        assert!(
+            args.contains(&"--resume"),
+            "Expected --resume flag, got: {args:?}"
+        );
+        assert!(
+            args.contains(&"abc-123"),
+            "Expected session ID, got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn test_build_with_empty_resume_args_behaves_like_build_command() {
+        let cmd1 = super::build_command("Code", &["Read".to_string()]);
+        let cmd2 = super::build_command_with_session("Code", &["Read".to_string()], &[]);
+        let args1: Vec<&str> = cmd1.get_args().map(|a| a.to_str().unwrap()).collect();
+        let args2: Vec<&str> = cmd2.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert_eq!(args1, args2);
     }
 }

@@ -10,7 +10,11 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 
 use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
-use crate::claude::{cli::build_command, permissions::resolve_permissions};
+use crate::claude::{
+    cli::{build_command, build_command_with_session},
+    permissions::{resolve_permissions, resolve_step_permissions},
+    session::SessionManager,
+};
 use crate::cli::{CycleDisplay, StatusLine};
 use crate::cycle::config::FlowConfig;
 use crate::cycle::context::{build_context, inject_context};
@@ -100,9 +104,11 @@ impl CycleExecutor {
 
     /// Execute a cycle with rich display and stream-JSON parsing.
     ///
-    /// Parses stream-JSON events for real-time display and populates rich
-    /// fields (turns, cost, denials) from the result blob. Includes a
-    /// mid-cycle circuit breaker that kills the subprocess if a tool is
+    /// For single-step cycles, executes the cycle's top-level prompt directly.
+    /// For multi-step cycles, executes each step sequentially, maintaining session
+    /// affinity for steps that share the same `session` tag.
+    ///
+    /// Includes a mid-cycle circuit breaker that kills the subprocess if a tool is
     /// denied `circuit_breaker_threshold` times in a row.
     ///
     /// Log entries are injected into the prompt as context based on the cycle's
@@ -113,55 +119,213 @@ impl CycleExecutor {
         circuit_breaker_threshold: u32,
         log_entries: &[CycleOutcome],
     ) -> Result<CycleResult> {
+        let cycle = self
+            .config
+            .get_cycle(cycle_name)
+            .with_context(|| format!("Unknown cycle: '{cycle_name}'"))?;
+
+        let display = CycleDisplay::new(cycle_name);
+        display.print_header();
+
+        if cycle.is_multi_step() {
+            self.execute_steps(cycle_name, circuit_breaker_threshold, log_entries, &display)
+                .await
+        } else {
+            self.execute_single_step(cycle_name, circuit_breaker_threshold, log_entries, &display)
+                .await
+        }
+    }
+
+    /// Execute a single-step cycle (existing behavior).
+    async fn execute_single_step(
+        &self,
+        cycle_name: &str,
+        circuit_breaker_threshold: u32,
+        log_entries: &[CycleOutcome],
+        display: &CycleDisplay,
+    ) -> Result<CycleResult> {
         let prepared = self.prepare_with_context(cycle_name, log_entries)?;
         let cmd = build_command(&prepared.prompt, &prepared.permissions);
-        let display = CycleDisplay::new(cycle_name);
-
-        display.print_header();
         let mut status_line = StatusLine::new(cycle_name);
 
         let (accumulator, stderr, exit_code, duration_secs) =
-            run_command_with_display(cmd, &display, &mut status_line, circuit_breaker_threshold)
+            run_command_with_display(cmd, display, &mut status_line, circuit_breaker_threshold)
                 .await?;
 
         status_line.clear();
 
-        // Extract rich fields from the accumulated result
-        let (result_text, num_turns, total_cost_usd, denial_count, denials) =
-            match &accumulator.result {
-                Some(StreamEvent::Result {
-                    result_text,
-                    num_turns,
-                    total_cost_usd,
-                    permission_denials,
-                    ..
-                }) => (
-                    Some(result_text.clone()),
-                    Some(*num_turns),
-                    Some(*total_cost_usd),
-                    Some(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX)),
-                    if permission_denials.is_empty() {
-                        None
-                    } else {
-                        Some(permission_denials.clone())
-                    },
-                ),
-                _ => (None, None, None, None, None),
-            };
-
-        Ok(CycleResult {
-            cycle_name: prepared.cycle_name,
-            success: exit_code == Some(0),
+        Ok(build_cycle_result(
+            prepared.cycle_name,
             exit_code,
-            stdout: String::new(), // Not captured in display mode
             stderr,
             duration_secs,
+            &accumulator,
+        ))
+    }
+
+    /// Execute a multi-step cycle, running each step sequentially.
+    ///
+    /// Steps sharing the same `session` tag continue the same Claude Code session.
+    /// If any step fails (non-zero exit code), execution stops immediately.
+    /// The final `CycleResult` aggregates data across all steps.
+    async fn execute_steps(
+        &self,
+        cycle_name: &str,
+        circuit_breaker_threshold: u32,
+        log_entries: &[CycleOutcome],
+        display: &CycleDisplay,
+    ) -> Result<CycleResult> {
+        let cycle = self
+            .config
+            .get_cycle(cycle_name)
+            .with_context(|| format!("Unknown cycle: '{cycle_name}'"))?;
+
+        let context = build_context(&cycle.context, log_entries);
+        let mut session_mgr = SessionManager::new();
+
+        // Aggregated metrics across all steps
+        let mut total_duration_secs: u64 = 0;
+        let mut total_turns: u32 = 0;
+        let mut total_cost: f64 = 0.0;
+        let mut total_denials: u32 = 0;
+        let mut all_denials: Vec<String> = Vec::new();
+        let mut last_result_text: Option<String> = None;
+        let mut last_exit_code: Option<i32> = None;
+        let mut combined_stderr = String::new();
+
+        let steps = cycle.steps.clone();
+        for step in &steps {
+            let step_label = format!("{cycle_name}/{}", step.name);
+            let mut status_line = StatusLine::new(&step_label);
+
+            // Inject context into the step prompt
+            let step_prompt = inject_context(&step.prompt, context.clone());
+
+            // Resolve permissions: global + cycle + step
+            let permissions = resolve_step_permissions(&self.config.global, cycle, step);
+
+            // Build command, resuming session if tag has been seen before
+            let resume_args = session_mgr.resume_args(step.session.as_deref());
+            let cmd = build_command_with_session(&step_prompt, &permissions, &resume_args);
+
+            let (accumulator, stderr, exit_code, duration_secs) =
+                run_command_with_display(cmd, display, &mut status_line, circuit_breaker_threshold)
+                    .await?;
+
+            status_line.clear();
+
+            // Register the session ID for future steps with the same tag
+            if let (Some(tag), Some(sid)) = (&step.session, &accumulator.session_id) {
+                session_mgr.register(tag, sid.clone());
+            }
+
+            // Aggregate step results
+            total_duration_secs += duration_secs;
+            if !stderr.is_empty() {
+                if !combined_stderr.is_empty() {
+                    combined_stderr.push('\n');
+                }
+                combined_stderr.push_str(&stderr);
+            }
+
+            if let Some(StreamEvent::Result {
+                result_text,
+                num_turns,
+                total_cost_usd,
+                permission_denials,
+                ..
+            }) = &accumulator.result
+            {
+                last_result_text = Some(result_text.clone());
+                total_turns = total_turns.saturating_add(*num_turns);
+                total_cost += total_cost_usd;
+                total_denials = total_denials
+                    .saturating_add(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX));
+                all_denials.extend(permission_denials.clone());
+            }
+
+            last_exit_code = exit_code;
+
+            // Fail-fast: stop if this step failed
+            if exit_code != Some(0) {
+                break;
+            }
+        }
+
+        Ok(CycleResult {
+            cycle_name: cycle_name.to_string(),
+            success: last_exit_code == Some(0),
+            exit_code: last_exit_code,
+            stdout: String::new(),
+            stderr: combined_stderr,
+            duration_secs: total_duration_secs,
+            result_text: last_result_text,
+            num_turns: if total_turns > 0 {
+                Some(total_turns)
+            } else {
+                None
+            },
+            total_cost_usd: if total_cost > 0.0 {
+                Some(total_cost)
+            } else {
+                None
+            },
+            permission_denial_count: if total_denials > 0 {
+                Some(total_denials)
+            } else {
+                None
+            },
+            permission_denials: if all_denials.is_empty() {
+                None
+            } else {
+                Some(all_denials)
+            },
+        })
+    }
+}
+
+/// Build a `CycleResult` from raw subprocess output and accumulated stream data.
+fn build_cycle_result(
+    cycle_name: String,
+    exit_code: Option<i32>,
+    stderr: String,
+    duration_secs: u64,
+    accumulator: &StreamAccumulator,
+) -> CycleResult {
+    let (result_text, num_turns, total_cost_usd, denial_count, denials) = match &accumulator.result
+    {
+        Some(StreamEvent::Result {
             result_text,
             num_turns,
             total_cost_usd,
-            permission_denial_count: denial_count,
-            permission_denials: denials,
-        })
+            permission_denials,
+            ..
+        }) => (
+            Some(result_text.clone()),
+            Some(*num_turns),
+            Some(*total_cost_usd),
+            Some(u32::try_from(permission_denials.len()).unwrap_or(u32::MAX)),
+            if permission_denials.is_empty() {
+                None
+            } else {
+                Some(permission_denials.clone())
+            },
+        ),
+        _ => (None, None, None, None, None),
+    };
+
+    CycleResult {
+        cycle_name,
+        success: exit_code == Some(0),
+        exit_code,
+        stdout: String::new(),
+        stderr,
+        duration_secs,
+        result_text,
+        num_turns,
+        total_cost_usd,
+        permission_denial_count: denial_count,
+        permission_denials: denials,
     }
 }
 
@@ -421,6 +585,7 @@ permissions = []
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         }
     }
 
@@ -571,6 +736,119 @@ permissions = []
         assert_eq!(result.total_cost_usd, Some(2.15));
         assert_eq!(result.permission_denial_count, Some(3));
         assert_eq!(result.permission_denials.as_ref().unwrap().len(), 3);
+    }
+
+    // --- multi-step cycle config tests ---
+
+    const MULTI_STEP_CONFIG: &str = r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Multi-step coding cycle"
+after = []
+context = "none"
+
+[[cycle.step]]
+name = "plan"
+session = "architect"
+prompt = "Read TODO.md and write a plan."
+permissions = ["Edit(./.flow/current-plan.md)"]
+
+[[cycle.step]]
+name = "implement"
+session = "coder"
+prompt = "Read the plan and implement it."
+permissions = ["Edit(./src/**)", "Bash(cargo *)"]
+
+[[cycle.step]]
+name = "review"
+session = "architect"
+prompt = "Review the implementation."
+"#;
+
+    fn multi_step_config() -> FlowConfig {
+        FlowConfig::parse(MULTI_STEP_CONFIG).unwrap()
+    }
+
+    #[test]
+    fn test_resolve_step_permissions_merges_global_cycle_and_step() {
+        let config = multi_step_config();
+        let cycle = config.get_cycle("coding").unwrap();
+        let plan_step = &cycle.steps[0];
+        let resolved = resolve_step_permissions(&config.global, cycle, plan_step);
+        // global: Read | cycle: (none) | step: Edit(./.flow/current-plan.md)
+        assert_eq!(resolved, vec!["Read", "Edit(./.flow/current-plan.md)"]);
+    }
+
+    #[test]
+    fn test_resolve_step_permissions_deduplicates() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "implement"
+prompt = "Implement."
+permissions = ["Read", "Edit(./src/**)"]
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let step = &cycle.steps[0];
+        let resolved = resolve_step_permissions(&config.global, cycle, step);
+        // "Read" from global, "Read" from step deduped, only "Edit(./src/**)" added
+        assert_eq!(resolved, vec!["Read", "Edit(./src/**)"]);
+    }
+
+    #[test]
+    fn test_resolve_step_permissions_additive_on_cycle_perms() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+permissions = ["Glob"]
+
+[[cycle.step]]
+name = "implement"
+prompt = "Implement."
+permissions = ["Edit(./src/**)"]
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let step = &cycle.steps[0];
+        let resolved = resolve_step_permissions(&config.global, cycle, step);
+        assert_eq!(resolved, vec!["Read", "Glob", "Edit(./src/**)"]);
+    }
+
+    #[test]
+    fn test_is_multi_step_cycle_true_for_multi_step() {
+        let config = multi_step_config();
+        let cycle = config.get_cycle("coding").unwrap();
+        assert!(cycle.is_multi_step());
+    }
+
+    #[test]
+    fn test_is_multi_step_cycle_false_for_single_step() {
+        let executor = CycleExecutor::new(test_config());
+        let config = test_config();
+        let cycle = config.get_cycle("coding").unwrap();
+        assert!(!cycle.is_multi_step());
+        // Keep executor in scope to avoid unused variable warning
+        drop(executor);
     }
 
     // --- run_command_with_display tests ---

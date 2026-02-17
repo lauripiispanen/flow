@@ -18,14 +18,16 @@
   - Completed: 2026-02-17
 
 ### Multi-Step Cycles (Session Reuse)
-- [ ] Implement step executor with session affinity
+- [x] Implement step executor with session affinity
   - Priority: P0
   - Plan: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
-  - Description: Execute steps sequentially within a cycle. Steps with matching session tags continue the same Claude Code session via `--continue`/`--resume`.
+  - Completed: 2026-02-17
+  - Components: `StepConfig` in config.rs, `SessionManager` in session.rs, multi-step execution in executor.rs, `StepOutcome` in jsonl.rs, `resolve_step_permissions` in permissions.rs, `build_command_with_session` in cli.rs, `StreamAccumulator.session_id` capture
 
-- [ ] Per-step permissions
+- [x] Per-step permissions
   - Priority: P1
-  - Description: Each step can have its own permissions (additive on top of cycle + global).
+  - Completed: 2026-02-17
+  - Description: Each step can have its own permissions (additive on top of cycle + global). Implemented as `resolve_step_permissions(global, cycle, step)`.
 
 - [ ] Add plan + plan-review steps to coding cycle
   - Priority: P1

@@ -106,6 +106,7 @@ async fn test_coding_cycle_end_to_end() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        steps: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -174,6 +175,7 @@ async fn test_failed_cycle_logged_correctly() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        steps: None,
     };
 
     logger.append(&outcome).unwrap();
@@ -232,6 +234,7 @@ async fn test_gardening_auto_triggers_after_coding() {
         total_cost_usd: None,
         permission_denial_count: None,
         permission_denials: None,
+        steps: None,
     };
     logger.append(&coding_outcome).unwrap();
     iteration += 1;
@@ -280,6 +283,7 @@ async fn test_gardening_auto_triggers_after_coding() {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
         logger.append(&dep_outcome).unwrap();
         iteration += 1;
@@ -315,7 +319,12 @@ async fn test_config_from_file_and_execute() {
     // Prepare cycle - proves config loading + validation works
     let prepared = executor.prepare("coding").unwrap();
     assert_eq!(prepared.cycle_name, "coding");
-    assert_eq!(prepared.prompt, "echo integration test");
+    // coding has context = "summaries", so even with empty log the prompt has context prepended
+    assert!(
+        prepared.prompt.contains("echo integration test"),
+        "Prompt should contain original text: {}",
+        prepared.prompt
+    );
 
     // Execute with mock command
     let mut cmd = Command::new("echo");
@@ -374,6 +383,7 @@ async fn test_multiple_iterations_logged() {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
         logger.append(&outcome).unwrap();
     }

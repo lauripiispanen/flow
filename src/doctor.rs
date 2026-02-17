@@ -288,6 +288,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         }
     }
 

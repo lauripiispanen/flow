@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use crate::cycle::config::{CycleConfig, GlobalConfig};
+use crate::cycle::config::{CycleConfig, GlobalConfig, StepConfig};
 
 /// Resolve the effective permissions for a cycle by merging global and
 /// cycle-specific permissions. Returns a deduplicated list with global
@@ -22,6 +22,41 @@ pub fn resolve_permissions(global: &GlobalConfig, cycle: &CycleConfig) -> Vec<St
     }
 
     for perm in &cycle.permissions {
+        if seen.insert(perm.as_str()) {
+            result.push(perm.clone());
+        }
+    }
+
+    result
+}
+
+/// Resolve the effective permissions for a step by merging global, cycle, and step permissions.
+///
+/// Returns a deduplicated list with global permissions first, then cycle-specific additions,
+/// then step-specific additions. All three layers are additive — permissions can only be added,
+/// never removed at any level.
+#[must_use]
+pub fn resolve_step_permissions(
+    global: &GlobalConfig,
+    cycle: &CycleConfig,
+    step: &StepConfig,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+
+    for perm in &global.permissions {
+        if seen.insert(perm.as_str()) {
+            result.push(perm.clone());
+        }
+    }
+
+    for perm in &cycle.permissions {
+        if seen.insert(perm.as_str()) {
+            result.push(perm.clone());
+        }
+    }
+
+    for perm in &step.permissions {
         if seen.insert(perm.as_str()) {
             result.push(perm.clone());
         }

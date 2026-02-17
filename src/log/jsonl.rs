@@ -9,6 +9,24 @@ use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+/// Per-step outcome data for multi-step cycles
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StepOutcome {
+    /// Step name (e.g., "plan", "implement", "review")
+    pub name: String,
+    /// Session tag used for this step (if any)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// Duration of this step in seconds
+    pub duration_secs: u64,
+    /// Number of conversation turns in this step
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_turns: Option<u32>,
+    /// Cost of this step in USD
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+}
+
 /// Represents the outcome of a single cycle execution
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CycleOutcome {
@@ -38,6 +56,9 @@ pub struct CycleOutcome {
     /// List of denied tool names (e.g., `["Edit", "Bash"]`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_denials: Option<Vec<String>>,
+    /// Per-step outcome data for multi-step cycles (omitted for single-step cycles)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steps: Option<Vec<StepOutcome>>,
 }
 
 /// JSONL logger for cycle execution history
@@ -171,6 +192,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -195,6 +217,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -209,6 +232,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -245,6 +269,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         let outcome2 = CycleOutcome {
@@ -259,6 +284,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         logger.append(&outcome1).unwrap();
@@ -292,6 +318,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         logger.append(&original).unwrap();
@@ -330,6 +357,7 @@ mod tests {
                 "Bash".to_string(),
                 "Edit".to_string(),
             ]),
+            steps: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -376,6 +404,7 @@ mod tests {
             total_cost_usd: Some(1.50),
             permission_denial_count: Some(2),
             permission_denials: Some(vec!["Edit".to_string(), "Bash".to_string()]),
+            steps: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -405,6 +434,7 @@ mod tests {
             total_cost_usd: None,
             permission_denial_count: None,
             permission_denials: None,
+            steps: None,
         };
 
         logger.append(&outcome).unwrap();
@@ -412,6 +442,93 @@ mod tests {
         // Read raw JSON to verify the field is not present
         let content = fs::read_to_string(logger.log_path()).unwrap();
         assert!(!content.contains("permission_denials"));
+    }
+
+    #[test]
+    fn test_cycle_outcome_steps_field_omitted_when_none() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        let outcome = CycleOutcome {
+            iteration: 1,
+            cycle: "coding".to_string(),
+            timestamp: Utc::now(),
+            outcome: "done".to_string(),
+            files_changed: vec![],
+            tests_passed: 0,
+            duration_secs: 60,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+            steps: None,
+        };
+
+        logger.append(&outcome).unwrap();
+        let content = fs::read_to_string(logger.log_path()).unwrap();
+        assert!(
+            !content.contains("\"steps\""),
+            "steps should not appear when None"
+        );
+    }
+
+    #[test]
+    fn test_cycle_outcome_steps_field_round_trips() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        let outcome = CycleOutcome {
+            iteration: 1,
+            cycle: "coding".to_string(),
+            timestamp: Utc::now(),
+            outcome: "Multi-step complete".to_string(),
+            files_changed: vec![],
+            tests_passed: 0,
+            duration_secs: 300,
+            num_turns: Some(30),
+            total_cost_usd: Some(1.5),
+            permission_denial_count: None,
+            permission_denials: None,
+            steps: Some(vec![
+                StepOutcome {
+                    name: "plan".to_string(),
+                    session: Some("architect".to_string()),
+                    duration_secs: 120,
+                    num_turns: Some(10),
+                    cost_usd: Some(0.5),
+                },
+                StepOutcome {
+                    name: "implement".to_string(),
+                    session: None,
+                    duration_secs: 180,
+                    num_turns: Some(20),
+                    cost_usd: Some(1.0),
+                },
+            ]),
+        };
+
+        logger.append(&outcome).unwrap();
+        let entries = logger.read_all().unwrap();
+        let steps = entries[0].steps.as_ref().unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].name, "plan");
+        assert_eq!(steps[0].session, Some("architect".to_string()));
+        assert_eq!(steps[1].name, "implement");
+        assert_eq!(steps[1].session, None);
+    }
+
+    #[test]
+    fn test_cycle_outcome_backward_compat_without_steps_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = JsonlLogger::new(temp_dir.path()).unwrap();
+
+        // Old format without steps field
+        let old_json = r#"{"iteration":1,"cycle":"coding","timestamp":"2026-02-15T00:00:00Z","outcome":"done","files_changed":[],"tests_passed":0,"duration_secs":60}"#;
+        std::fs::write(logger.log_path(), format!("{old_json}\n")).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].steps.is_none());
     }
 
     #[test]
