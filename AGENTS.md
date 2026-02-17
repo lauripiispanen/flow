@@ -13,7 +13,7 @@
 3. Pick task from [TODO.md](./TODO.md) Phase 2 section
 4. Follow TDD: Write tests → Implement → Refactor
 
-**Suggested First Tasks**: Status bar (live run display) | `flow doctor` (log analysis) | Multi-iteration loop (`--max-iterations`)
+**Suggested First Tasks**: Iteration context (wire context modes) | `flow init` (project scaffolding) | Multi-step cycles (session affinity)
 
 ---
 
@@ -79,11 +79,11 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 ## Current Status
 
 **Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood
-**In Progress**: Phase 2 implementation (cycle selector, multi-step cycles, flow init, flow plan)
-**Next**: flow init → flow plan → cycle selector → multi-step cycles
+**In Progress**: Phase 2 (iteration context, multi-step cycles, flow init, flow plan)
+**Next**: Iteration context → multi-step cycles → flow init → flow plan
 
 **Test Status**:
-- ✅ 172 passing (154 lib + 12 main + 6 integration)
+- ✅ 203 passing (182 lib + 15 main + 6 integration)
 
 **Component Status**:
 ```
@@ -95,9 +95,10 @@ Stream-JSON Parser    | ✅ | src/claude/stream.rs (23 tests)
 Rich CLI Display      | ✅ | src/cli/display.rs (28 tests, includes status bar + health colors + doctor display)
 JSONL Logger          | ✅ | src/log/jsonl.rs (12 tests)
 Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
+Cycle Selector        | ✅ | src/cycle/selector.rs (27 tests, AI-driven cycle selection)
 Doctor Diagnostics    | ✅ | src/doctor.rs (14 tests)
-CLI Interface         | ✅ | src/main.rs (12 tests, rich display + safeguards + doctor + max-iterations)
-cycles.toml           | ✅ | cycles.toml (coding + gardening, corrected perms)
+CLI Interface         | ✅ | src/main.rs (15 tests, rich display + safeguards + doctor + max-iterations + selector)
+cycles.toml           | ✅ | cycles.toml (coding + gardening + review + planning)
 Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
 Runtime Safeguards    | ✅ | circuit breaker + between-cycle gate
 ```
@@ -183,7 +184,8 @@ All current cycles are single-step. Phase 2 adds multi-step cycles with session 
 ```
 flow/
 ├── AGENTS.md              ← You are here (index/map)
-├── TODO.md                ← Tasks by phase (read next)
+├── TODO.md                ← Pending tasks by phase (read next)
+├── COMPLETED.md           ← Historical record of completed work
 ├── PLANNING_QUESTIONS.md  ← Decisions & rationale
 ├── README.md              ← Public-facing docs
 ├── Cargo.toml             ← Deps + lints config
@@ -202,7 +204,8 @@ flow/
 │   ├── cycle/
 │   │   ├── config.rs      ← Parse cycles.toml (29 + 10 tests)
 │   │   ├── executor.rs    ← Execute cycles (16 tests)
-│   │   └── rules.rs       ← Dependency triggers (8 tests)
+│   │   ├── rules.rs       ← Dependency triggers (8 tests)
+│   │   └── selector.rs    ← AI-driven cycle selection (27 tests)
 │   ├── claude/
 │   │   ├── cli.rs         ← CLI command builder (8 tests)
 │   │   ├── permissions.rs ← Permission resolver (7 tests)
@@ -243,17 +246,15 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 ## Quick Wins for New Contributors
 
-**Phase 1 is complete.** Next tasks are Phase 2:
+**Phase 1 is complete. Phase 2 is partially complete** (status bar, doctor, multi-iteration, cycle selector all done). Remaining Phase 2 tasks:
 
-**Medium**: Status bar — persistent bottom line during runs → `src/cli/display.rs`, `src/cycle/executor.rs`
-**Medium**: `flow doctor` — log analysis + config lint + permission suggestions → `src/doctor.rs` (new)
-**Medium**: Multi-iteration loop (`--max-iterations`) → `src/main.rs`
+**Medium**: Iteration context — wire the `context` config field to inject log history into cycle prompts
+**Medium**: Multi-step cycles — step executor with session affinity → `src/cycle/executor.rs`
 **Easy**: `flow init` — scaffold cycles.toml + .flow/ for new projects → `src/init.rs` (new)
-**Medium**: `flow plan` — quick idea capture (`flow plan 'idea'`) + interactive deep planning (`flow plan`) → `src/plan.rs` (new)
-**Hard**: Cycle selector (AI-driven cycle selection) → new module
+**Medium**: `flow plan` — quick idea capture + interactive deep planning → `src/plan.rs` (new)
 
-All Phase 2 tasks have specs in TODO.md.
+See [TODO.md](./TODO.md) for full task list.
 
 ---
 
-**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (doctor + multi-iteration done) | **Next Milestone**: Cycle selector + multi-step cycles
+**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (status bar, doctor, multi-iteration, cycle selector done) | **Next Milestone**: Iteration context + multi-step cycles
