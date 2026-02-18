@@ -5,11 +5,11 @@
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Flow is a loop runner for Claude Code. You define named cycles — coding, gardening, review, planning — each with its own prompt and permission set, and Flow executes them as fresh Claude Code invocations. Point it at a `cycles.toml` and a `TODO.md`, run `flow --max-iterations 20`, and it picks the most useful cycle each iteration, spawns Claude Code with scoped permissions, logs the outcome, auto-triggers follow-up cycles, and repeats — autonomous software development in a loop, with guardrails.
+Flow is a loop runner for Claude Code. You define named cycles — coding, gardening, review, docs, planning — each with its own prompt and permission set, and Flow executes them as fresh Claude Code invocations. Point it at a `cycles.toml` and a `TODO.md`, run `flow --max-iterations 20`, and it picks the most useful cycle each iteration, spawns Claude Code with scoped permissions, logs the outcome, auto-triggers follow-up cycles, and repeats — autonomous software development in a loop, with guardrails.
 
 ## Features
 
-- **Named Cycles**: Define purpose-specific cycles (coding, gardening, review, planning) in a single TOML config
+- **Named Cycles**: Define purpose-specific cycles (coding, gardening, review, docs, planning) in a single TOML config
 - **Multi-Step Cycles**: Break cycles into sequential steps with session affinity — e.g., plan → review → implement in the same conversation
 - **LLM Step Routing**: Steps can use `router = "llm"` for conditional branching (e.g., loop back to planning if review rejects)
 - **Multi-Iteration Loops**: Run many iterations back-to-back with `--max-iterations`
@@ -160,6 +160,17 @@ The `context` field controls how much execution history is injected into cycle p
 | `"summaries"` | Summarized history (recommended for most cycles) |
 | `"none"` | No history context |
 
+### Selector customization
+
+When running without `--cycle`, Flow uses an AI selector to pick the best cycle each iteration. You can customize the selector's decision criteria with a `[selector]` section:
+
+```toml
+[selector]
+prompt = "Prefer coding cycles for TODO items. Only run gardening after 3+ coding cycles."
+```
+
+The custom prompt replaces the default selection criteria. When omitted or empty, built-in defaults are used.
+
 ## How It Works
 
 1. **Load config** — parse `cycles.toml`, validate cycles, steps, and permissions
@@ -201,6 +212,7 @@ flow/
 │   ├── lib.rs               # Public library re-exports
 │   ├── init.rs              # flow init scaffolding
 │   ├── doctor.rs            # Diagnostic engine (D001-D006)
+│   ├── testutil.rs          # Shared test helpers
 │   ├── cycle/
 │   │   ├── config.rs        # TOML config parsing and validation
 │   │   ├── executor.rs      # Single-step and multi-step cycle execution
