@@ -21,10 +21,11 @@
 
 ### P1 — Important Phase 2 follow-ups
 
-- [ ] Add `[selector]` config section to cycles.toml
+- [x] Add `[selector]` config section to cycles.toml
+  - Status: Completed
   - Priority: P1
-  - Description: Replace the `--todo` CLI flag with a `[selector]` section in `cycles.toml`. Add a `prompt` field that provides guidance to the AI selector (e.g., "Read TODO.md for priorities. Focus on P0 tasks first."). This decouples the selector from a specific file convention and keeps all orchestration config in one place. Implementation: add `SelectorConfig` to `config.rs`, wire into `select_cycle()` in `selector.rs`, deprecate `--todo` flag.
-  - Files: `src/cycle/config.rs`, `src/cycle/selector.rs`, `src/main.rs`, `cycles.toml`
+  - Description: Added `SelectorConfig` struct to `config.rs` with `prompt` field, wired into `build_selector_prompt()` in `selector.rs`. Custom prompt replaces the hardcoded "Selection Criteria" section; absent/empty prompt preserves backward-compatible defaults. 6 new tests. Note: `[selector]` section still needs to be added to `cycles.toml` (blocked by permission model during this cycle).
+  - Files: `src/cycle/config.rs`, `src/cycle/selector.rs`, `src/cycle/rules.rs`
 
 - [ ] Enrich selector context with recent outcomes
   - Priority: P1

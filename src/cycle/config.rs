@@ -134,11 +134,22 @@ impl CycleConfig {
     }
 }
 
+/// Configuration for the AI cycle selector
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SelectorConfig {
+    /// Custom prompt/guidance for the selector (replaces the default selection criteria)
+    #[serde(default)]
+    pub prompt: String,
+}
+
 /// Top-level Flow configuration parsed from cycles.toml
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FlowConfig {
     /// Global configuration
     pub global: GlobalConfig,
+    /// Optional selector configuration
+    #[serde(default)]
+    pub selector: Option<SelectorConfig>,
     /// Cycle definitions
     #[serde(rename = "cycle")]
     pub cycles: Vec<CycleConfig>,
@@ -1202,6 +1213,72 @@ router = "invalid"
             err.to_string().contains("Failed to parse"),
             "Expected parse error for invalid router, got: {err}"
         );
+    }
+
+    // --- SelectorConfig tests ---
+
+    #[test]
+    fn test_selector_config_parsed() {
+        let toml = r#"
+[global]
+permissions = []
+
+[selector]
+prompt = "Read TODO.md for priorities. Focus on P0 tasks first."
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let selector = config.selector.as_ref().expect("selector should be Some");
+        assert_eq!(
+            selector.prompt,
+            "Read TODO.md for priorities. Focus on P0 tasks first."
+        );
+    }
+
+    #[test]
+    fn test_selector_config_absent_is_none() {
+        let config = FlowConfig::parse(VALID_CONFIG).unwrap();
+        assert!(
+            config.selector.is_none(),
+            "config without [selector] should have selector = None"
+        );
+    }
+
+    /// Verify the actual cycles.toml parses correctly with the optional [selector] field.
+    /// When [selector] is added to cycles.toml, this test validates it has a non-empty prompt.
+    #[test]
+    fn test_actual_cycles_toml_parses_with_optional_selector() {
+        let config = FlowConfig::from_path("cycles.toml").expect("cycles.toml must be parseable");
+        // selector is optional — just verify the config parses without error
+        if let Some(selector) = &config.selector {
+            assert!(
+                !selector.prompt.is_empty(),
+                "if [selector] is present, its prompt should be non-empty"
+            );
+        }
+    }
+
+    #[test]
+    fn test_selector_config_empty_prompt() {
+        let toml = r#"
+[global]
+permissions = []
+
+[selector]
+prompt = ""
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let selector = config.selector.as_ref().expect("selector should be Some");
+        assert!(selector.prompt.is_empty());
     }
 
     #[test]

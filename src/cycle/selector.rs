@@ -260,6 +260,24 @@ pub fn build_selector_prompt(
         .map(|c| format!("- {}: {}", c.name, c.description))
         .collect();
 
+    let custom_prompt = config
+        .selector
+        .as_ref()
+        .map(|s| s.prompt.as_str())
+        .filter(|p| !p.is_empty());
+
+    let criteria = custom_prompt.map_or_else(
+        || {
+            "## Selection Criteria\n\
+            1. **Priority**: If there are pending P0 tasks, prefer \"coding\" to make progress\n\
+            2. **Balance**: Cycles that haven't run recently should get priority\n\
+            3. **Context**: If a recent cycle failed, consider \"gardening\" or \"review\" before retrying coding\n\
+            4. **Health**: If permission denials or errors are increasing, prefer \"review\" to diagnose"
+                .to_string()
+        },
+        |prompt| format!("## Selector Guidance\n{prompt}"),
+    );
+
     format!(
         r#"You are Flow's cycle selector. Analyze the current state and choose the next cycle to execute.
 
@@ -272,11 +290,7 @@ pub fn build_selector_prompt(
 ## Available Cycles
 {cycle_names}
 
-## Selection Criteria
-1. **Priority**: If there are pending P0 tasks, prefer "coding" to make progress
-2. **Balance**: Cycles that haven't run recently should get priority
-3. **Context**: If a recent cycle failed, consider "gardening" or "review" before retrying coding
-4. **Health**: If permission denials or errors are increasing, prefer "review" to diagnose
+{criteria}
 
 Choose the next cycle. Respond with ONLY a JSON object on a single line, no other text:
 {{"cycle": "<name>", "reason": "<one sentence explanation>"}}"#,
@@ -695,6 +709,49 @@ mod tests {
             "Let me suggest coding.\n{\"cycle\": \"gardening\", \"reason\": \"Balance\"}\n";
         let selection = parse_selection(response, &config).unwrap();
         assert_eq!(selection.cycle, "gardening");
+    }
+
+    // --- build_selector_prompt with custom selector criteria ---
+
+    #[test]
+    fn test_build_selector_prompt_uses_custom_criteria() {
+        let toml = r#"
+[global]
+permissions = []
+
+[selector]
+prompt = "Custom guidance: always pick gardening first."
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let prompt = build_selector_prompt(&config, &[], "");
+        assert!(
+            prompt.contains("Custom guidance: always pick gardening first."),
+            "Prompt should include custom selector criteria"
+        );
+        assert!(
+            !prompt.contains("## Selection Criteria"),
+            "Prompt should NOT include hardcoded Selection Criteria heading when custom prompt is set"
+        );
+    }
+
+    #[test]
+    fn test_build_selector_prompt_falls_back_without_selector() {
+        let config = make_config(&["coding", "gardening"]);
+        let prompt = build_selector_prompt(&config, &[], "");
+        assert!(
+            prompt.contains("## Selection Criteria"),
+            "Prompt should include hardcoded Selection Criteria heading when no selector configured"
+        );
     }
 
     #[test]

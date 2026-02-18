@@ -193,6 +193,7 @@ after = ["coding", "testing"]
                 circuit_breaker_repeated: 5,
                 max_consecutive_failures: 3,
             },
+            selector: None,
             cycles: vec![],
         };
         let triggered = find_triggered_cycles(&config, "anything", &[]);
