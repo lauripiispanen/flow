@@ -204,7 +204,7 @@ pub fn render_diagnostic_report(report: &crate::doctor::DiagnosticReport) -> Str
 }
 
 /// Format a duration in seconds as a human-readable string (e.g. "2m 15s", "30s", "5m").
-fn format_summary_duration(secs: u64) -> String {
+pub(crate) fn format_duration(secs: u64) -> String {
     let mins = secs / 60;
     let secs = secs % 60;
     if mins == 0 {
@@ -243,7 +243,7 @@ pub fn render_run_summary(
          Results: {successes}/{total} succeeded\n\
          Cost: ${total_cost_usd:.2} | Duration: {}\n\
          \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-        format_summary_duration(duration_secs)
+        format_duration(duration_secs)
     )
 }
 

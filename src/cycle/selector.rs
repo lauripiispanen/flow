@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 
 use crate::claude::cli::{build_command, run_for_result};
+use crate::cli::display::format_duration;
 use crate::cycle::config::FlowConfig;
 use crate::log::CycleOutcome;
 
@@ -254,19 +255,6 @@ pub fn format_log_summary(summary: &LogSummary, config: &FlowConfig) -> String {
     }
 
     lines.join("\n")
-}
-
-/// Format a duration in seconds as a compact human-readable string.
-fn format_duration(secs: u64) -> String {
-    let m = secs / 60;
-    let s = secs % 60;
-    if m == 0 {
-        format!("{s}s")
-    } else if s == 0 {
-        format!("{m}m")
-    } else {
-        format!("{m}m {s}s")
-    }
 }
 
 /// The result of cycle selection.

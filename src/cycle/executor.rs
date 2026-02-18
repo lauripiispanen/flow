@@ -1138,9 +1138,6 @@ permissions = ["Edit(./src/**)"]
 
     // --- shutdown flag tests ---
 
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-
     #[test]
     fn test_executor_new_accepts_shutdown_flag() {
         let config = test_config();

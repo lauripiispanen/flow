@@ -4,6 +4,8 @@
 //! and suggest fixes. Returns a structured report with categories:
 //! errors (must fix), warnings (should fix), info (suggestions).
 
+use std::collections::HashMap;
+
 use crate::cycle::config::FlowConfig;
 use crate::log::CycleOutcome;
 
@@ -184,9 +186,8 @@ fn check_high_cost(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
 }
 
 /// Group log entries by cycle name.
-fn group_by_cycle(log: &[CycleOutcome]) -> std::collections::HashMap<&str, Vec<&CycleOutcome>> {
-    let mut cycle_outcomes: std::collections::HashMap<&str, Vec<&CycleOutcome>> =
-        std::collections::HashMap::new();
+fn group_by_cycle(log: &[CycleOutcome]) -> HashMap<&str, Vec<&CycleOutcome>> {
+    let mut cycle_outcomes: HashMap<&str, Vec<&CycleOutcome>> = HashMap::new();
     for entry in log {
         cycle_outcomes
             .entry(entry.cycle.as_str())
