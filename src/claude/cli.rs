@@ -11,6 +11,17 @@ use tokio::process::Command as TokioCommand;
 
 use super::stream::{parse_event, StreamAccumulator, StreamEvent};
 
+/// Options for building a Claude Code command beyond prompt and permissions.
+#[derive(Debug, Clone, Default)]
+pub struct CommandOptions {
+    /// Resume args (e.g., `["--resume", "<session_id>"]`). Empty means new session.
+    pub resume_args: Vec<String>,
+    /// Maximum agentic turns (maps to `--max-turns`).
+    pub max_turns: Option<u32>,
+    /// Maximum cost in USD (maps to `--max-budget-usd`).
+    pub max_cost_usd: Option<f64>,
+}
+
 /// Build a `Command` to invoke Claude Code with the given prompt and permissions.
 ///
 /// The command uses `-p` for non-interactive prompt execution,
@@ -18,7 +29,7 @@ use super::stream::{parse_event, StreamAccumulator, StreamEvent};
 /// and `--allowedTools` for each resolved permission string.
 #[must_use]
 pub fn build_command(prompt: &str, permissions: &[String]) -> Command {
-    build_command_with_session(prompt, permissions, &[])
+    build_command_with_options(prompt, permissions, &CommandOptions::default())
 }
 
 /// Build a `Command` to invoke Claude Code, optionally resuming an existing session.
@@ -32,9 +43,29 @@ pub fn build_command_with_session(
     permissions: &[String],
     resume_args: &[String],
 ) -> Command {
+    build_command_with_options(
+        prompt,
+        permissions,
+        &CommandOptions {
+            resume_args: resume_args.to_vec(),
+            ..Default::default()
+        },
+    )
+}
+
+/// Build a `Command` to invoke Claude Code with full options.
+///
+/// This is the core builder that all other `build_command*` functions delegate to.
+/// Supports resume args, max turns, and max budget in addition to prompt and permissions.
+#[must_use]
+pub fn build_command_with_options(
+    prompt: &str,
+    permissions: &[String],
+    options: &CommandOptions,
+) -> Command {
     let mut cmd = Command::new("claude");
 
-    for arg in resume_args {
+    for arg in &options.resume_args {
         cmd.arg(arg);
     }
 
@@ -47,6 +78,14 @@ pub fn build_command_with_session(
         for perm in permissions {
             cmd.arg(perm);
         }
+    }
+
+    if let Some(max_turns) = options.max_turns {
+        cmd.arg("--max-turns").arg(max_turns.to_string());
+    }
+
+    if let Some(max_cost) = options.max_cost_usd {
+        cmd.arg("--max-budget-usd").arg(max_cost.to_string());
     }
 
     cmd
@@ -224,6 +263,96 @@ mod tests {
     fn test_build_with_empty_resume_args_behaves_like_build_command() {
         let cmd1 = super::build_command("Code", &["Read".to_string()]);
         let cmd2 = super::build_command_with_session("Code", &["Read".to_string()], &[]);
+        let args1: Vec<&str> = cmd1.get_args().map(|a| a.to_str().unwrap()).collect();
+        let args2: Vec<&str> = cmd2.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert_eq!(args1, args2);
+    }
+
+    // --- CommandOptions tests ---
+
+    #[test]
+    fn test_command_options_default_has_no_limits() {
+        let opts = super::CommandOptions::default();
+        assert!(opts.resume_args.is_empty());
+        assert!(opts.max_turns.is_none());
+        assert!(opts.max_cost_usd.is_none());
+    }
+
+    #[test]
+    fn test_build_with_max_turns_adds_flag() {
+        let opts = super::CommandOptions {
+            max_turns: Some(50),
+            ..Default::default()
+        };
+        let cmd = super::build_command_with_options("Code", &[], &opts);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert!(
+            args.contains(&"--max-turns"),
+            "Expected --max-turns flag, got: {args:?}"
+        );
+        assert!(
+            args.contains(&"50"),
+            "Expected max-turns value '50', got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn test_build_with_max_cost_adds_flag() {
+        let opts = super::CommandOptions {
+            max_cost_usd: Some(5.0),
+            ..Default::default()
+        };
+        let cmd = super::build_command_with_options("Code", &[], &opts);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert!(
+            args.contains(&"--max-budget-usd"),
+            "Expected --max-budget-usd flag, got: {args:?}"
+        );
+        assert!(
+            args.contains(&"5"),
+            "Expected max-budget-usd value '5', got: {args:?}"
+        );
+    }
+
+    #[test]
+    fn test_build_with_both_limits() {
+        let opts = super::CommandOptions {
+            max_turns: Some(100),
+            max_cost_usd: Some(10.0),
+            ..Default::default()
+        };
+        let cmd = super::build_command_with_options("Code", &[], &opts);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert!(args.contains(&"--max-turns"));
+        assert!(args.contains(&"100"));
+        assert!(args.contains(&"--max-budget-usd"));
+        assert!(args.contains(&"10"));
+    }
+
+    #[test]
+    fn test_build_with_resume_and_limits() {
+        let opts = super::CommandOptions {
+            resume_args: vec!["--resume".to_string(), "abc-123".to_string()],
+            max_turns: Some(30),
+            max_cost_usd: Some(2.5),
+        };
+        let cmd = super::build_command_with_options("Code", &[], &opts);
+        let args: Vec<&str> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert!(args.contains(&"--resume"));
+        assert!(args.contains(&"abc-123"));
+        assert!(args.contains(&"--max-turns"));
+        assert!(args.contains(&"30"));
+        assert!(args.contains(&"--max-budget-usd"));
+    }
+
+    #[test]
+    fn test_build_command_delegates_to_default_options() {
+        let cmd1 = super::build_command("Code", &["Read".to_string()]);
+        let cmd2 = super::build_command_with_options(
+            "Code",
+            &["Read".to_string()],
+            &super::CommandOptions::default(),
+        );
         let args1: Vec<&str> = cmd1.get_args().map(|a| a.to_str().unwrap()).collect();
         let args2: Vec<&str> = cmd2.get_args().map(|a| a.to_str().unwrap()).collect();
         assert_eq!(args1, args2);

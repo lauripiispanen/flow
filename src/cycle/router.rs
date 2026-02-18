@@ -428,6 +428,8 @@ mod tests {
             permissions: vec![],
             router,
             max_visits,
+            max_turns: None,
+            max_cost_usd: None,
         }
     }
 

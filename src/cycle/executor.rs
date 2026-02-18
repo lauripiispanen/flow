@@ -13,7 +13,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 use crate::claude::{
-    cli::{build_command, build_command_with_session},
+    cli::{build_command_with_options, CommandOptions},
     permissions::{resolve_permissions, resolve_step_permissions},
     session::SessionManager,
 };
@@ -169,8 +169,21 @@ impl CycleExecutor {
         display: &CycleDisplay,
         iteration_context: Option<(u32, u32)>,
     ) -> Result<CycleResult> {
+        let cycle = self
+            .config
+            .get_cycle(cycle_name)
+            .with_context(|| format!("Unknown cycle: '{cycle_name}'"))?;
+        let (max_turns, max_cost_usd) = resolve_limits(cycle, None);
         let prepared = self.prepare_with_context(cycle_name, log_entries)?;
-        let cmd = build_command(&prepared.prompt, &prepared.permissions);
+        let cmd = build_command_with_options(
+            &prepared.prompt,
+            &prepared.permissions,
+            &CommandOptions {
+                max_turns,
+                max_cost_usd,
+                ..Default::default()
+            },
+        );
         let mut status_line = match iteration_context {
             Some((c, m)) => StatusLine::with_iteration(cycle_name, c, m),
             None => StatusLine::new(cycle_name),
@@ -247,7 +260,16 @@ impl CycleExecutor {
             let step_prompt = inject_context(&step.prompt, context.clone());
             let permissions = resolve_step_permissions(&self.config.global, cycle, step);
             let resume_args = session_mgr.resume_args(step.session.as_deref());
-            let cmd = build_command_with_session(&step_prompt, &permissions, &resume_args);
+            let (max_turns, max_cost_usd) = resolve_limits(cycle, Some(step));
+            let cmd = build_command_with_options(
+                &step_prompt,
+                &permissions,
+                &CommandOptions {
+                    resume_args,
+                    max_turns,
+                    max_cost_usd,
+                },
+            );
 
             let (accumulator, stderr, exit_code, duration_secs) = run_command_with_display(
                 cmd,
@@ -297,6 +319,18 @@ impl CycleExecutor {
 
         Ok(agg.into_cycle_result(cycle_name))
     }
+}
+
+/// Resolve effective limits for a step, falling back to cycle-level values.
+///
+/// Step values override cycle values (not additive). If neither is set, returns `None`.
+fn resolve_limits(
+    cycle: &crate::cycle::config::CycleConfig,
+    step: Option<&crate::cycle::config::StepConfig>,
+) -> (Option<u32>, Option<f64>) {
+    let max_turns = step.and_then(|s| s.max_turns).or(cycle.max_turns);
+    let max_cost_usd = step.and_then(|s| s.max_cost_usd).or(cycle.max_cost_usd);
+    (max_turns, max_cost_usd)
 }
 
 /// Aggregates metrics across multiple steps in a multi-step cycle execution.
@@ -1264,6 +1298,111 @@ permissions = ["Edit(./src/**)"]
         assert_eq!(result.files_changed, vec!["src/a.rs", "src/b.rs"]);
         assert_eq!(result.result_text.as_deref(), Some("Step 2 done"));
         assert_eq!(result.stderr, "some error");
+    }
+
+    // --- resolve_limits tests ---
+
+    #[test]
+    fn test_resolve_limits_from_cycle_when_no_step() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_turns = 200
+max_cost_usd = 10.0
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let (max_turns, max_cost_usd) = resolve_limits(cycle, None);
+        assert_eq!(max_turns, Some(200));
+        assert!((max_cost_usd.unwrap() - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_resolve_limits_step_overrides_cycle() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+max_turns = 200
+max_cost_usd = 10.0
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+max_turns = 30
+max_cost_usd = 2.0
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let step = &cycle.steps[0];
+        let (max_turns, max_cost_usd) = resolve_limits(cycle, Some(step));
+        assert_eq!(max_turns, Some(30));
+        assert!((max_cost_usd.unwrap() - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_resolve_limits_step_falls_back_to_cycle() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+max_turns = 200
+max_cost_usd = 10.0
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let step = &cycle.steps[0];
+        let (max_turns, max_cost_usd) = resolve_limits(cycle, Some(step));
+        assert_eq!(max_turns, Some(200));
+        assert!((max_cost_usd.unwrap() - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_resolve_limits_none_when_neither_set() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+"#,
+        )
+        .unwrap();
+        let cycle = config.get_cycle("coding").unwrap();
+        let step = &cycle.steps[0];
+        let (max_turns, max_cost_usd) = resolve_limits(cycle, Some(step));
+        assert_eq!(max_turns, None);
+        assert_eq!(max_cost_usd, None);
     }
 
     #[test]

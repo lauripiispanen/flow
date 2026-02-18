@@ -19,17 +19,24 @@ _(empty — all P0 items are complete)_
   - Description: Added `--repair` flag to doctor subcommand. Auto-applies D001 (missing permissions) and D004 (`min_interval`) fixes using `toml_edit` for format-preserving TOML edits. Added `cycle_name` field to `Finding` struct. 13 new tests (10 doctor + 3 CLI).
   - Files: `src/doctor.rs`, `src/main.rs`, `Cargo.toml`
 
-- [ ] Add `[selector]` section and `[global]` defaults to `cycles.toml`
+- [ ] Add `[global]` defaults explicitly to `cycles.toml`
   - Priority: P1
-  - Description: The `[selector]` config section was implemented (commit `dca487c`) but never added to `cycles.toml` due to permission constraints. Also document `max_consecutive_failures = 3` and `summary_interval = 5` in the `[global]` section explicitly (currently using defaults). This makes the config file self-documenting.
-  - Files: `cycles.toml`
+  - Status: **Blocked** — requires manual edit (no cycle has `Edit(./cycles.toml)` permission)
+  - Description: Add `max_permission_denials = 10`, `circuit_breaker_repeated = 5`, `max_consecutive_failures = 3`, `summary_interval = 5` after the `[global]` permissions line. These are the current serde defaults — no behavior change, purely self-documenting. The `[selector]` section is already present (added in earlier iteration).
+  - Files: `cycles.toml` line 8
+
+- [ ] Add `Edit(./Cargo.toml)` to coding implement step permissions
+  - Priority: P1
+  - Status: **Blocked** — requires manual edit (no cycle has `Edit(./cycles.toml)` permission)
+  - Description: Change implement step permissions from `["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]` to `["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Edit(./Cargo.toml)", "Bash(git *)"]`.
+  - Files: `cycles.toml` line 92
 
 ---
 
 ## Phase 3: Advanced Features (future)
 
 - [ ] Template prompts with variables (e.g., `{{todo_file}}`, `{{project_name}}`)
-- [ ] Per-cycle timeout configuration
+- [x] Per-cycle timeout configuration (`max_turns`, `max_cost_usd` on cycles and steps)
 - [ ] Parallel cycle execution (wave-based)
 - [ ] Model profiles (different models for coding/review/planning)
 - [ ] State file (`.flow/state.md`) — compact living memory for cross-iteration continuity

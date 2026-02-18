@@ -16,7 +16,10 @@ pub mod log;
 pub mod testutil;
 
 // Re-export commonly used types
-pub use claude::cli::{build_command, build_command_with_session, run_for_result};
+pub use claude::cli::{
+    build_command, build_command_with_options, build_command_with_session, run_for_result,
+    CommandOptions,
+};
 pub use claude::permissions::{resolve_permissions, resolve_step_permissions};
 pub use claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 pub use cli::{render_diagnostic_report, CycleDisplay, StatusLine};

@@ -75,7 +75,7 @@ const fn default_max_visits() -> u32 {
 }
 
 /// A single step within a multi-step cycle
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StepConfig {
     /// Unique name for this step within the cycle
     pub name: String,
@@ -96,10 +96,18 @@ pub struct StepConfig {
     /// Prevents infinite loops when using LLM routing. Default: 3.
     #[serde(default = "default_max_visits")]
     pub max_visits: u32,
+    /// Maximum number of agentic turns for this step (maps to --max-turns).
+    /// Overrides the cycle-level value when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    /// Maximum cost in USD for this step (maps to --max-budget-usd).
+    /// Overrides the cycle-level value when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_cost_usd: Option<f64>,
 }
 
 /// A single cycle definition
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CycleConfig {
     /// Unique name for this cycle
     pub name: String,
@@ -121,6 +129,14 @@ pub struct CycleConfig {
     /// None means no constraint (always eligible).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_interval: Option<u32>,
+    /// Maximum number of agentic turns per invocation (maps to `--max-turns`).
+    /// Used as fallback for steps that don't set their own `max_turns`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    /// Maximum cost in USD per invocation (maps to `--max-budget-usd`).
+    /// Used as fallback for steps that don't set their own `max_cost_usd`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_cost_usd: Option<f64>,
     /// Steps for multi-step cycles. Empty means single-step (uses top-level `prompt`).
     #[serde(default, rename = "step")]
     pub steps: Vec<StepConfig>,
@@ -150,7 +166,7 @@ pub struct SelectorConfig {
 }
 
 /// Top-level Flow configuration parsed from cycles.toml
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FlowConfig {
     /// Global configuration
     pub global: GlobalConfig,
@@ -224,6 +240,19 @@ impl FlowConfig {
         for cycle in &self.cycles {
             for perm in &cycle.permissions {
                 validate_permission(perm).with_context(|| format!("in cycle '{}'", cycle.name))?;
+            }
+        }
+
+        // Validate max_turns and max_cost_usd on cycles and steps
+        for cycle in &self.cycles {
+            validate_limits(cycle.max_turns, cycle.max_cost_usd, &cycle.name, None)?;
+            for step in &cycle.steps {
+                validate_limits(
+                    step.max_turns,
+                    step.max_cost_usd,
+                    &cycle.name,
+                    Some(&step.name),
+                )?;
             }
         }
 
@@ -318,6 +347,28 @@ fn validate_permission(perm: &str) -> Result<()> {
         bail!("Invalid permission '{perm}': specifier inside parentheses cannot be empty");
     }
 
+    Ok(())
+}
+
+/// Validate `max_turns` and `max_cost_usd` for a cycle or step.
+fn validate_limits(
+    max_turns: Option<u32>,
+    max_cost_usd: Option<f64>,
+    cycle_name: &str,
+    step_name: Option<&str>,
+) -> Result<()> {
+    let prefix = step_name.map_or_else(
+        || format!("Cycle '{cycle_name}'"),
+        |s| format!("Step '{s}' in cycle '{cycle_name}'"),
+    );
+    if max_turns == Some(0) {
+        bail!("{prefix}: max_turns must be greater than 0");
+    }
+    if let Some(cost) = max_cost_usd {
+        if cost <= 0.0 {
+            bail!("{prefix}: max_cost_usd must be greater than 0");
+        }
+    }
     Ok(())
 }
 
@@ -1335,6 +1386,173 @@ prompt = "Code"
 "#;
         let config = FlowConfig::parse(toml).unwrap();
         assert_eq!(config.global.summary_interval, 0);
+    }
+
+    // --- max_turns / max_cost_usd config field tests ---
+
+    #[test]
+    fn test_max_turns_default_is_none() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.max_turns, None);
+    }
+
+    #[test]
+    fn test_max_turns_parsed_from_config() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_turns = 50
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.max_turns, Some(50));
+    }
+
+    #[test]
+    fn test_max_cost_usd_default_is_none() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert_eq!(coding.max_cost_usd, None);
+    }
+
+    #[test]
+    fn test_max_cost_usd_parsed_from_config() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_cost_usd = 5.0
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let coding = config.get_cycle("coding").unwrap();
+        assert!((coding.max_cost_usd.unwrap() - 5.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_step_max_turns_parsed() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+max_turns = 30
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert_eq!(step.max_turns, Some(30));
+    }
+
+    #[test]
+    fn test_step_max_cost_usd_parsed() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+after = []
+
+[[cycle.step]]
+name = "plan"
+prompt = "Plan."
+max_cost_usd = 2.0
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        let step = &config.get_cycle("coding").unwrap().steps[0];
+        assert!((step.max_cost_usd.unwrap() - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_reject_max_turns_zero() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_turns = 0
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("max_turns"),
+            "Expected 'max_turns' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_max_cost_usd_zero() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_cost_usd = 0.0
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("max_cost_usd"),
+            "Expected 'max_cost_usd' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_max_cost_usd_negative() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+max_cost_usd = -1.0
+"#;
+        let err = FlowConfig::parse(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("max_cost_usd"),
+            "Expected 'max_cost_usd' error, got: {err}"
+        );
     }
 
     #[test]
