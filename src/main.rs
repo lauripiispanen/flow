@@ -20,6 +20,7 @@ use flow::cycle::selector::select_cycle;
 use flow::doctor::diagnose;
 use flow::init::init;
 use flow::log::jsonl::JsonlLogger;
+use flow::log::progress::{ProgressWriter, RunProgress, RunStatus};
 use flow::log::CycleOutcome;
 
 /// Automated coding pipeline runner
@@ -185,6 +186,20 @@ async fn resolve_cycle_name(
     Ok(selection.cycle)
 }
 
+/// Update progress state after a cycle completes.
+fn update_progress_after_cycle(
+    progress: &mut RunProgress,
+    cycle_name: &str,
+    result: &flow::CycleResult,
+) {
+    *progress
+        .cycles_executed
+        .entry(cycle_name.to_string())
+        .or_insert(0) += 1;
+    progress.total_duration_secs += result.duration_secs;
+    progress.last_outcome = result.result_text.clone();
+}
+
 /// Execute a cycle with rich display and log the result. Returns the `CycleResult`.
 async fn execute_and_log(
     executor: &CycleExecutor,
@@ -295,9 +310,22 @@ async fn main() -> Result<()> {
     let max_consecutive_failures = config.global.max_consecutive_failures;
     let executor = CycleExecutor::new(config.clone());
     let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
+    let progress_writer =
+        ProgressWriter::new(&cli.log_dir).context("Failed to initialize progress writer")?;
     let mut iteration: u32 = 1;
     let max_iterations = cli.max_iterations;
     let mut run_history: Vec<RunOutcome> = Vec::new();
+
+    let mut progress = RunProgress {
+        started_at: chrono::Utc::now(),
+        current_iteration: 1,
+        max_iterations,
+        current_cycle: String::new(),
+        current_status: RunStatus::Running,
+        cycles_executed: std::collections::BTreeMap::new(),
+        total_duration_secs: 0,
+        last_outcome: None,
+    };
 
     print_run_banner(max_iterations, fixed_cycle.as_deref(), use_selector);
 
@@ -317,6 +345,11 @@ async fn main() -> Result<()> {
         let cycle_name =
             resolve_cycle_name(&config, &logger, fixed_cycle.as_deref(), &cli.todo).await?;
 
+        // Update progress before execution
+        progress.current_iteration = iteration;
+        progress.current_cycle = cycle_name.clone();
+        let _ = progress_writer.write(&progress);
+
         // Execute the selected cycle
         let result = execute_and_log(
             &executor,
@@ -326,6 +359,10 @@ async fn main() -> Result<()> {
             circuit_breaker,
         )
         .await?;
+
+        // Update progress after execution
+        update_progress_after_cycle(&mut progress, &cycle_name, &result);
+        let _ = progress_writer.write(&progress);
 
         apply_cycle_gates(
             &result,
@@ -343,6 +380,10 @@ async fn main() -> Result<()> {
         let triggered = find_triggered_cycles(&config, &result.cycle_name, &log_entries);
         for dep_cycle in triggered {
             eprintln!("Auto-triggering dependent cycle: {dep_cycle}");
+
+            progress.current_cycle = dep_cycle.to_string();
+            let _ = progress_writer.write(&progress);
+
             let dep_result = execute_and_log(
                 &executor,
                 &logger,
@@ -351,6 +392,9 @@ async fn main() -> Result<()> {
                 circuit_breaker,
             )
             .await?;
+
+            update_progress_after_cycle(&mut progress, dep_cycle, &dep_result);
+            let _ = progress_writer.write(&progress);
 
             apply_cycle_gates(
                 &dep_result,
@@ -362,6 +406,11 @@ async fn main() -> Result<()> {
             );
         }
     }
+
+    // Write final progress and clean up
+    progress.current_status = RunStatus::Completed;
+    let _ = progress_writer.write(&progress);
+    let _ = progress_writer.delete();
 
     if max_iterations > 1 {
         if use_selector {

@@ -59,8 +59,11 @@
   - Completed: 2026-02-17
 
 ### Enhanced Observability
-- [ ] Implement .flow/progress.json writer
+- [x] Implement .flow/progress.json writer
   - Priority: P1
+  - Completed: 2026-02-18
+  - Description: `ProgressWriter` manages `.flow/progress.json` with atomic writes (temp+rename). `RunProgress` struct tracks started_at, current_iteration, max_iterations, current_cycle, current_status, cycles_executed (BTreeMap), total_duration_secs, last_outcome. `RunStatus` enum: Running/Completed/Failed/Stopped. Wired into main.rs iteration loop — writes before/after each cycle execution (primary + dependent), final status on completion, deletes on normal exit. 11 new tests.
+  - Components: `src/log/progress.rs` (new) with `RunProgress`, `RunStatus`, `ProgressWriter`; re-exported from `src/log/mod.rs` and `src/lib.rs`; `update_progress_after_cycle()` helper in main.rs
 
 - [ ] Periodic summary output (every N iterations)
   - Priority: P1
