@@ -16,7 +16,7 @@ Flow is a loop runner for Claude Code. You define named cycles — coding, garde
 - **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state, with customizable selection criteria via `[selector]` config
 - **Dependency Triggers**: Cycles can auto-trigger after others (e.g., gardening after coding) with configurable minimum intervals
 - **Additive Permissions**: Global + cycle + per-step permissions merged and passed to Claude Code as `--allowedTools`
-- **Live Status Bar**: Color-coded health display during execution showing turns, cost, elapsed time, and errors
+- **Live Status Bar**: Color-coded health display during execution showing turns, cost, elapsed time, errors, and iteration progress (`[3/10]`) for multi-iteration runs
 - **JSONL Logging**: Every cycle outcome is logged to `.flow/log.jsonl` with cost, turns, denials, files changed, tests passed, and timing
 - **Progress Tracking**: `.flow/progress.json` provides real-time run status for external monitoring
 - **Diagnostics**: `flow doctor` analyzes config and log history for permission issues, high costs, and configuration lint
