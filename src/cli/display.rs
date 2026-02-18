@@ -203,6 +203,50 @@ pub fn render_diagnostic_report(report: &crate::doctor::DiagnosticReport) -> Str
     lines.join("\n")
 }
 
+/// Format a duration in seconds as a human-readable string (e.g. "2m 15s", "30s", "5m").
+fn format_summary_duration(secs: u64) -> String {
+    let mins = secs / 60;
+    let secs = secs % 60;
+    if mins == 0 {
+        format!("{secs}s")
+    } else if secs == 0 {
+        format!("{mins}m")
+    } else {
+        format!("{mins}m {secs}s")
+    }
+}
+
+/// Render a periodic run summary as a compact multi-line block.
+///
+/// Displayed every N iterations during multi-iteration runs to give users
+/// an aggregated view of progress, cost, cycle mix, and success rate.
+#[must_use]
+pub fn render_run_summary(
+    iteration: u32,
+    max_iterations: u32,
+    total_cost_usd: f64,
+    cycles: &std::collections::BTreeMap<String, u32>,
+    successes: u32,
+    failures: u32,
+    duration_secs: u64,
+) -> String {
+    let total = successes + failures;
+    let cycle_parts: Vec<String> = cycles
+        .iter()
+        .map(|(name, count)| format!("{name}\u{00d7}{count}"))
+        .collect();
+    let cycles_str = cycle_parts.join(", ");
+
+    format!(
+        "\u{2500}\u{2500}\u{2500} Run Summary ({iteration}/{max_iterations}) \u{2500}\u{2500}\u{2500}\n\
+         Cycles: {cycles_str}\n\
+         Results: {successes}/{total} succeeded\n\
+         Cost: ${total_cost_usd:.2} | Duration: {}\n\
+         \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
+        format_summary_duration(duration_secs)
+    )
+}
+
 /// Health color for the status bar
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HealthColor {
@@ -728,6 +772,63 @@ mod tests {
         let output = render_diagnostic_report(&report);
         assert!(output.contains("1 error"));
         assert!(output.contains("1 warning"));
+    }
+
+    // --- render_run_summary tests ---
+
+    #[test]
+    fn test_render_run_summary_basic() {
+        let mut cycles = std::collections::BTreeMap::new();
+        cycles.insert("coding".to_string(), 3u32);
+        cycles.insert("gardening".to_string(), 2u32);
+
+        let output = render_run_summary(5, 20, 3.45, &cycles, 4, 1, 510);
+        assert!(output.contains("5/20"), "Should show iteration progress");
+        assert!(output.contains("$3.45"), "Should show cost");
+        assert!(
+            output.contains("coding\u{00d7}3"),
+            "Should show coding count"
+        );
+        assert!(
+            output.contains("gardening\u{00d7}2"),
+            "Should show gardening count"
+        );
+        assert!(output.contains("4/5 succeeded"), "Should show success rate");
+        assert!(output.contains("8m 30s"), "Should show duration");
+    }
+
+    #[test]
+    fn test_render_run_summary_all_success() {
+        let mut cycles = std::collections::BTreeMap::new();
+        cycles.insert("coding".to_string(), 5u32);
+
+        let output = render_run_summary(5, 10, 1.00, &cycles, 5, 0, 300);
+        assert!(output.contains("5/5 succeeded"));
+    }
+
+    #[test]
+    fn test_render_run_summary_single_cycle_type() {
+        let mut cycles = std::collections::BTreeMap::new();
+        cycles.insert("coding".to_string(), 5u32);
+
+        let output = render_run_summary(5, 10, 2.00, &cycles, 4, 1, 600);
+        assert!(output.contains("coding\u{00d7}5"));
+        // Should not contain a comma since there's only one cycle type
+        let cycles_line = output
+            .lines()
+            .find(|l: &&str| l.contains("Cycles:"))
+            .unwrap();
+        assert!(
+            !cycles_line.contains(", "),
+            "Single cycle type should not have comma separator"
+        );
+    }
+
+    #[test]
+    fn test_render_run_summary_zero_cost() {
+        let cycles = std::collections::BTreeMap::new();
+        let output = render_run_summary(1, 5, 0.0, &cycles, 1, 0, 30);
+        assert!(output.contains("$0.00"));
     }
 
     #[test]

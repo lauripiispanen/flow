@@ -192,6 +192,7 @@ after = ["coding", "testing"]
                 max_permission_denials: 10,
                 circuit_breaker_repeated: 5,
                 max_consecutive_failures: 3,
+                summary_interval: 5,
             },
             selector: None,
             cycles: vec![],

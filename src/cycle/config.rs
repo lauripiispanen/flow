@@ -35,6 +35,9 @@ pub struct GlobalConfig {
     /// Stop the entire run if this many consecutive cycles fail (default: 3)
     #[serde(default = "default_max_consecutive_failures")]
     pub max_consecutive_failures: u32,
+    /// Print a periodic run summary every N iterations (default: 5, 0 = disabled)
+    #[serde(default = "default_summary_interval")]
+    pub summary_interval: u32,
 }
 
 const fn default_max_permission_denials() -> u32 {
@@ -47,6 +50,10 @@ const fn default_circuit_breaker_repeated() -> u32 {
 
 const fn default_max_consecutive_failures() -> u32 {
     3
+}
+
+const fn default_summary_interval() -> u32 {
+    5
 }
 
 /// Router mode for determining the next step after a step completes
@@ -1279,6 +1286,55 @@ prompt = "Code"
         let config = FlowConfig::parse(toml).unwrap();
         let selector = config.selector.as_ref().expect("selector should be Some");
         assert!(selector.prompt.is_empty());
+    }
+
+    // --- summary_interval config field tests ---
+
+    #[test]
+    fn test_summary_interval_defaults_to_five() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.summary_interval, 5);
+    }
+
+    #[test]
+    fn test_summary_interval_custom_value() {
+        let toml = r#"
+[global]
+permissions = []
+summary_interval = 10
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.summary_interval, 10);
+    }
+
+    #[test]
+    fn test_summary_interval_zero_is_valid() {
+        let toml = r#"
+[global]
+permissions = []
+summary_interval = 0
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.summary_interval, 0);
     }
 
     #[test]

@@ -33,10 +33,11 @@
   - Description: Enriched `RecentOutcome` with `files_changed_count`, `tests_passed`, `cost_usd`, `duration_secs`, `denial_count` from `CycleOutcome`. Updated `format_log_summary()` to render compact enriched lines: `#3 coding [ok] 2m $1.23 3 files 42 tests: Implemented feature X`. Zero values (0 files, 0 tests, 0 denials) are omitted to reduce noise. 7 new tests.
   - Files: `src/cycle/selector.rs`
 
-- [ ] Periodic summary output every N iterations
+- [x] Periodic summary output every N iterations
+  - Status: Completed
   - Priority: P1
-  - Description: During multi-iteration runs, print a summary every N iterations (configurable, default 5): total cost so far, cycle breakdown (coding×4, gardening×1), test count trend, success rate. Helps users monitor long runs without reading raw output. Data is already available in `RunProgress` and log entries.
-  - Files: `src/cli/display.rs`, `src/main.rs`
+  - Description: Added `summary_interval` to `GlobalConfig` (default 5, 0 = disabled). Added `total_cost_usd` to `RunProgress` (backward compat via serde default). `render_run_summary()` in `display.rs` formats a compact 4-line block: iteration progress, cycle breakdown (coding×3, gardening×2), success rate (4/5 succeeded), cost + duration. Wired into main loop via `print_periodic_summary()` + `should_print_summary()`. 12 new tests.
+  - Files: `src/cycle/config.rs`, `src/log/progress.rs`, `src/cli/display.rs`, `src/main.rs`
 
 - [ ] Show iteration progress in status bar
   - Priority: P1

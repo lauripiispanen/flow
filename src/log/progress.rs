@@ -24,7 +24,7 @@ pub enum RunStatus {
 }
 
 /// Snapshot of the current run state, written to `.flow/progress.json`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunProgress {
     /// When the run started (ISO 8601)
     pub started_at: chrono::DateTime<chrono::Utc>,
@@ -40,6 +40,9 @@ pub struct RunProgress {
     pub cycles_executed: BTreeMap<String, u32>,
     /// Total duration of all completed cycles in seconds
     pub total_duration_secs: u64,
+    /// Cumulative cost of all completed cycles in USD
+    #[serde(default)]
+    pub total_cost_usd: f64,
     /// Outcome text from the most recent cycle (None if no cycle has completed yet)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_outcome: Option<String>,
@@ -118,6 +121,7 @@ mod tests {
             current_status: RunStatus::Running,
             cycles_executed: cycles,
             total_duration_secs: 445,
+            total_cost_usd: 3.45,
             last_outcome: Some("Added ClaudeClient implementation".to_string()),
         }
     }
@@ -257,6 +261,31 @@ mod tests {
     }
 
     #[test]
+    fn test_total_cost_usd_serializes() {
+        let mut progress = sample_progress();
+        progress.total_cost_usd = 3.45;
+        let json = serde_json::to_value(&progress).unwrap();
+        let cost = json["total_cost_usd"].as_f64().unwrap();
+        assert!((cost - 3.45).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_total_cost_usd_defaults_to_zero_on_deserialize() {
+        // Simulate a progress.json from an older version without total_cost_usd
+        let json = r#"{
+            "started_at": "2026-01-15T10:00:00Z",
+            "current_iteration": 1,
+            "max_iterations": 5,
+            "current_cycle": "coding",
+            "current_status": "running",
+            "cycles_executed": {},
+            "total_duration_secs": 0
+        }"#;
+        let progress: RunProgress = serde_json::from_str(json).unwrap();
+        assert!((progress.total_cost_usd - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
     fn test_last_outcome_omitted_when_none() {
         let progress = RunProgress {
             started_at: Utc::now(),
@@ -266,6 +295,7 @@ mod tests {
             current_status: RunStatus::Running,
             cycles_executed: BTreeMap::new(),
             total_duration_secs: 0,
+            total_cost_usd: 0.0,
             last_outcome: None,
         };
 

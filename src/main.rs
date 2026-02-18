@@ -199,6 +199,7 @@ fn update_progress_after_cycle(
         .entry(cycle_name.to_string())
         .or_insert(0) += 1;
     progress.total_duration_secs += result.duration_secs;
+    progress.total_cost_usd += result.total_cost_usd.unwrap_or(0.0);
     progress.last_outcome.clone_from(&result.result_text);
 }
 
@@ -362,6 +363,39 @@ async fn run_dependent_cycles(
     Ok(())
 }
 
+/// Print a periodic run summary if the completed iteration is at the configured interval.
+fn print_periodic_summary(
+    progress: &RunProgress,
+    run_history: &[RunOutcome],
+    max_iterations: u32,
+    summary_interval: u32,
+) {
+    if !should_print_summary(progress.current_iteration, summary_interval) {
+        return;
+    }
+    #[allow(clippy::cast_possible_truncation)] // bounded by max_iterations (u32)
+    let successes = run_history.iter().filter(|o| o.success).count() as u32;
+    #[allow(clippy::cast_possible_truncation)]
+    let failures = run_history.iter().filter(|o| !o.success).count() as u32;
+    let summary = flow::cli::render_run_summary(
+        progress.current_iteration,
+        max_iterations,
+        progress.total_cost_usd,
+        &progress.cycles_executed,
+        successes,
+        failures,
+        progress.total_duration_secs,
+    );
+    eprintln!("\n{summary}");
+}
+
+/// Check if a periodic run summary should be printed at this iteration.
+///
+/// Returns `true` when `interval > 0` and `completed_iteration` is a multiple of `interval`.
+const fn should_print_summary(completed_iteration: u32, interval: u32) -> bool {
+    interval > 0 && completed_iteration > 0 && completed_iteration.is_multiple_of(interval)
+}
+
 /// Write final progress state and print run summary.
 fn finalize_run(
     shutdown: &AtomicBool,
@@ -398,12 +432,10 @@ fn finalize_run(
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Handle subcommands
-    if cli.command == Some(Command::Doctor) {
-        return run_doctor(&cli);
-    }
-    if cli.command == Some(Command::Init) {
-        return run_init();
+    match cli.command {
+        Some(Command::Doctor) => return run_doctor(&cli),
+        Some(Command::Init) => return run_init(),
+        None => {}
     }
 
     let (config, fixed_cycle, use_selector) = validate_cli(&cli)?;
@@ -427,6 +459,7 @@ async fn main() -> Result<()> {
         current_status: RunStatus::Running,
         cycles_executed: std::collections::BTreeMap::new(),
         total_duration_secs: 0,
+        total_cost_usd: 0.0,
         last_outcome: None,
     };
 
@@ -500,6 +533,13 @@ async fn main() -> Result<()> {
             &shutdown,
         )
         .await?;
+
+        print_periodic_summary(
+            &progress,
+            &run_history,
+            max_iterations,
+            config.global.summary_interval,
+        );
     }
 
     finalize_run(
@@ -805,6 +845,26 @@ prompt = "Garden"
         let cli = Cli::try_parse_from(["flow", "--max-iterations", "10"]).unwrap();
         assert!(cli.cycle.is_none());
         assert_eq!(cli.max_iterations, 10);
+    }
+
+    // --- should_print_summary tests ---
+
+    #[test]
+    fn test_should_print_summary_at_interval() {
+        assert!(should_print_summary(5, 5));
+        assert!(should_print_summary(10, 5));
+    }
+
+    #[test]
+    fn test_should_print_summary_not_at_interval() {
+        assert!(!should_print_summary(3, 5));
+        assert!(!should_print_summary(1, 5));
+    }
+
+    #[test]
+    fn test_should_print_summary_disabled_when_zero() {
+        assert!(!should_print_summary(5, 0));
+        assert!(!should_print_summary(10, 0));
     }
 
     // --- check_run_health tests ---

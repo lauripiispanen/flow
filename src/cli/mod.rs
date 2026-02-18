@@ -6,5 +6,6 @@
 pub mod display;
 
 pub use display::render_diagnostic_report;
+pub use display::render_run_summary;
 pub use display::CycleDisplay;
 pub use display::StatusLine;
