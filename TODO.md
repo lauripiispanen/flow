@@ -27,11 +27,11 @@
   - Description: Added `SelectorConfig` struct to `config.rs` with `prompt` field, wired into `build_selector_prompt()` in `selector.rs`. Custom prompt replaces the hardcoded "Selection Criteria" section; absent/empty prompt preserves backward-compatible defaults. 6 new tests. Note: `[selector]` section still needs to be added to `cycles.toml` (blocked by permission model during this cycle).
   - Files: `src/cycle/config.rs`, `src/cycle/selector.rs`, `src/cycle/rules.rs`
 
-- [ ] Enrich selector context with recent outcomes
+- [x] Enrich selector context with recent outcomes
+  - Status: Completed
   - Priority: P1
-  - Depends on: `[selector]` config (can be done independently but better sequenced after)
-  - Description: The selector currently gets cycle counts and TODO priorities but not a summary of recent outcomes. Feed the selector the last 5-10 cycle outcomes (name, success/failure, files changed, key accomplishments) so it can make better routing decisions — e.g., skip gardening if last gardening found nothing, prioritize review if several coding cycles completed without one.
-  - Files: `src/cycle/selector.rs`, `src/main.rs`
+  - Description: Enriched `RecentOutcome` with `files_changed_count`, `tests_passed`, `cost_usd`, `duration_secs`, `denial_count` from `CycleOutcome`. Updated `format_log_summary()` to render compact enriched lines: `#3 coding [ok] 2m $1.23 3 files 42 tests: Implemented feature X`. Zero values (0 files, 0 tests, 0 denials) are omitted to reduce noise. 7 new tests.
+  - Files: `src/cycle/selector.rs`
 
 - [ ] Periodic summary output every N iterations
   - Priority: P1

@@ -114,7 +114,7 @@ pub struct LogSummary {
 }
 
 /// A compact representation of a single recent outcome.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RecentOutcome {
     /// Iteration number
     pub iteration: u32,
@@ -124,6 +124,16 @@ pub struct RecentOutcome {
     pub success: bool,
     /// One-line summary
     pub outcome: String,
+    /// Number of files changed
+    pub files_changed_count: usize,
+    /// Number of tests that passed
+    pub tests_passed: u32,
+    /// Cost in USD (None if not tracked)
+    pub cost_usd: Option<f64>,
+    /// Duration in seconds
+    pub duration_secs: u64,
+    /// Number of permission denials (0 if none or unknown)
+    pub denial_count: u32,
 }
 
 /// Summarize a JSONL log into a compact form for the cycle selector.
@@ -173,6 +183,11 @@ pub fn summarize_log(log: &[CycleOutcome], max_recent: usize) -> LogSummary {
             cycle: o.cycle.clone(),
             success: !o.outcome.starts_with("Failed"),
             outcome: o.outcome.clone(),
+            files_changed_count: o.files_changed.len(),
+            tests_passed: o.tests_passed,
+            cost_usd: o.total_cost_usd,
+            duration_secs: o.duration_secs,
+            denial_count: o.permission_denial_count.unwrap_or(0),
         })
         .collect();
 
@@ -217,14 +232,43 @@ pub fn format_log_summary(summary: &LogSummary, config: &FlowConfig) -> String {
         lines.push("Recent:".to_string());
         for outcome in &summary.recent_outcomes {
             let status = if outcome.success { "ok" } else { "FAIL" };
+            let duration = format_duration(outcome.duration_secs);
+            let mut detail_parts = Vec::new();
+            detail_parts.push(duration);
+            if let Some(cost) = outcome.cost_usd {
+                detail_parts.push(format!("${cost:.2}"));
+            }
+            if outcome.files_changed_count > 0 {
+                detail_parts.push(format!("{} files", outcome.files_changed_count));
+            }
+            if outcome.tests_passed > 0 {
+                detail_parts.push(format!("{} tests", outcome.tests_passed));
+            }
+            if outcome.denial_count > 0 {
+                detail_parts.push(format!("{} denials", outcome.denial_count));
+            }
+            let detail = detail_parts.join(" ");
             lines.push(format!(
-                "  #{} {} [{}]: {}",
-                outcome.iteration, outcome.cycle, status, outcome.outcome
+                "  #{} {} [{}] {}: {}",
+                outcome.iteration, outcome.cycle, status, detail, outcome.outcome
             ));
         }
     }
 
     lines.join("\n")
+}
+
+/// Format a duration in seconds as a compact human-readable string.
+fn format_duration(secs: u64) -> String {
+    let m = secs / 60;
+    let s = secs % 60;
+    if m == 0 {
+        format!("{s}s")
+    } else if s == 0 {
+        format!("{m}m")
+    } else {
+        format!("{m}m {s}s")
+    }
 }
 
 /// The result of cycle selection.
@@ -725,5 +769,87 @@ prompt = "Garden"
         assert!(formatted.contains("[FAIL]"));
         assert!(formatted.contains("[ok]"));
         assert!(formatted.contains("Implemented feature X"));
+    }
+
+    // --- enriched RecentOutcome tests ---
+
+    #[test]
+    fn test_recent_outcome_includes_files_changed_count() {
+        let mut o = make_outcome(1, "coding", "Implemented feature", Some(2.0));
+        o.files_changed = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        let summary = summarize_log(&[o], 5);
+        assert_eq!(summary.recent_outcomes[0].files_changed_count, 2);
+    }
+
+    #[test]
+    fn test_recent_outcome_includes_tests_passed() {
+        let mut o = make_outcome(1, "coding", "Implemented feature", Some(2.0));
+        o.tests_passed = 42;
+        let summary = summarize_log(&[o], 5);
+        assert_eq!(summary.recent_outcomes[0].tests_passed, 42);
+    }
+
+    #[test]
+    fn test_recent_outcome_includes_cost() {
+        let log = vec![make_outcome(1, "coding", "done", Some(1.23))];
+        let summary = summarize_log(&log, 5);
+        assert_eq!(summary.recent_outcomes[0].cost_usd, Some(1.23));
+    }
+
+    #[test]
+    fn test_recent_outcome_includes_duration() {
+        let log = vec![make_outcome(1, "coding", "done", Some(1.0))];
+        let summary = summarize_log(&log, 5);
+        // make_outcome sets duration_secs = 120
+        assert_eq!(summary.recent_outcomes[0].duration_secs, 120);
+    }
+
+    #[test]
+    fn test_recent_outcome_includes_denial_count() {
+        let mut o = make_outcome(1, "coding", "done", Some(1.0));
+        o.permission_denial_count = Some(3);
+        let summary = summarize_log(&[o], 5);
+        assert_eq!(summary.recent_outcomes[0].denial_count, 3);
+    }
+
+    #[test]
+    fn test_format_summary_shows_enriched_recent() {
+        let mut o = make_outcome(1, "coding", "Implemented feature X", Some(1.23));
+        o.files_changed = vec!["a.rs".to_string(), "b.rs".to_string(), "c.rs".to_string()];
+        o.tests_passed = 42;
+        o.duration_secs = 135; // 2m 15s
+        let summary = summarize_log(&[o], 5);
+        let config = make_config(&["coding"]);
+        let formatted = format_log_summary(&summary, &config);
+
+        assert!(
+            formatted.contains("2m 15s"),
+            "Should show duration: {formatted}"
+        );
+        assert!(formatted.contains("$1.23"), "Should show cost: {formatted}");
+        assert!(
+            formatted.contains("3 files"),
+            "Should show file count: {formatted}"
+        );
+        assert!(
+            formatted.contains("42 tests"),
+            "Should show test count: {formatted}"
+        );
+        assert!(
+            formatted.contains("Implemented feature X"),
+            "Should show outcome: {formatted}"
+        );
+    }
+
+    #[test]
+    fn test_format_summary_omits_zero_denials() {
+        let o = make_outcome(1, "coding", "done", Some(1.0));
+        let summary = summarize_log(&[o], 5);
+        let config = make_config(&["coding"]);
+        let formatted = format_log_summary(&summary, &config);
+        assert!(
+            !formatted.contains("denial"),
+            "Zero denials should not appear: {formatted}"
+        );
     }
 }
