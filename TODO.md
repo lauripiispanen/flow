@@ -69,9 +69,11 @@
   - Priority: P1
 
 ### Signal Handling
-- [ ] Handle ctrl+c (SIGINT) gracefully during run
+- [x] Handle ctrl+c (SIGINT) gracefully during run
   - Priority: P0
-  - Description: Ctrl+c doesn't work when flow is running. Need to install a signal handler that cleanly terminates the current Claude Code subprocess and exits.
+  - Completed: 2026-02-18
+  - Description: Installed `tokio::signal::ctrl_c()` handler that sets an `Arc<AtomicBool>` shutdown flag. The `CycleExecutor` accepts the flag and threads it through to `run_command_with_display`, where `tokio::select!` races line reads against a 100ms shutdown poll for responsive (<200ms) termination. Child processes are killed immediately. Main loop checks the flag between iterations and before dependent cycle triggers. `progress.json` is written with `Stopped` status on interrupt. Extracted `validate_cli()`, `install_signal_handler()`, `run_dependent_cycles()`, and `finalize_run()` helpers from main to stay under clippy line limits.
+  - Components: `shutdown: Arc<AtomicBool>` field in `CycleExecutor`, `tokio::select!` in `run_command_with_display`, signal handler spawn + shutdown checks in main.rs, `finalize_run()` helper. 3 new executor tests.
 
 ### Status Bar
 - [ ] Show cycle count in status bar

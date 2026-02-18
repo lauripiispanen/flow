@@ -5,6 +5,8 @@
 
 use anyhow::{Context, Result};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
@@ -64,13 +66,17 @@ pub struct CycleResult {
 /// Executes cycles by invoking Claude Code CLI
 pub struct CycleExecutor {
     config: FlowConfig,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl CycleExecutor {
-    /// Create a new executor with the given configuration
+    /// Create a new executor with the given configuration and shutdown flag.
+    ///
+    /// The shutdown flag is checked during stream reading; when set, the child
+    /// process is killed and execution stops promptly.
     #[must_use]
-    pub const fn new(config: FlowConfig) -> Self {
-        Self { config }
+    pub const fn new(config: FlowConfig, shutdown: Arc<AtomicBool>) -> Self {
+        Self { config, shutdown }
     }
 
     /// Prepare a cycle for execution.
@@ -151,9 +157,14 @@ impl CycleExecutor {
         let cmd = build_command(&prepared.prompt, &prepared.permissions);
         let mut status_line = StatusLine::new(cycle_name);
 
-        let (accumulator, stderr, exit_code, duration_secs) =
-            run_command_with_display(cmd, display, &mut status_line, circuit_breaker_threshold)
-                .await?;
+        let (accumulator, stderr, exit_code, duration_secs) = run_command_with_display(
+            cmd,
+            display,
+            &mut status_line,
+            circuit_breaker_threshold,
+            &self.shutdown,
+        )
+        .await?;
 
         status_line.clear();
 
@@ -215,9 +226,14 @@ impl CycleExecutor {
             let resume_args = session_mgr.resume_args(step.session.as_deref());
             let cmd = build_command_with_session(&step_prompt, &permissions, &resume_args);
 
-            let (accumulator, stderr, exit_code, duration_secs) =
-                run_command_with_display(cmd, display, &mut status_line, circuit_breaker_threshold)
-                    .await?;
+            let (accumulator, stderr, exit_code, duration_secs) = run_command_with_display(
+                cmd,
+                display,
+                &mut status_line,
+                circuit_breaker_threshold,
+                &self.shutdown,
+            )
+            .await?;
 
             status_line.clear();
 
@@ -420,6 +436,7 @@ async fn run_command_with_display(
     display: &CycleDisplay,
     status_line: &mut StatusLine,
     circuit_breaker_threshold: u32,
+    shutdown: &AtomicBool,
 ) -> Result<(StreamAccumulator, String, Option<i32>, u64)> {
     let mut tokio_cmd = TokioCommand::from(cmd);
     tokio_cmd.stdout(Stdio::piped());
@@ -453,10 +470,29 @@ async fn run_command_with_display(
     let mut consecutive_tool_errors: u32 = 0;
     let mut reader = BufReader::new(child_stdout);
     let mut line_buf = String::new();
+    let mut was_shutdown = false;
 
     loop {
+        // Use tokio::select! to race the line read against a shutdown poll.
+        // This ensures responsiveness even when the child is silent.
         line_buf.clear();
-        let bytes_read = reader.read_line(&mut line_buf).await.unwrap_or(0);
+        let bytes_read = tokio::select! {
+            result = reader.read_line(&mut line_buf) => result.unwrap_or(0),
+            () = async {
+                loop {
+                    if shutdown.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            } => {
+                // Shutdown flag was set — kill the child process
+                let _ = child.kill().await;
+                was_shutdown = true;
+                break;
+            }
+        };
+
         if bytes_read == 0 {
             break; // EOF or error
         }
@@ -496,7 +532,11 @@ async fn run_command_with_display(
     let stderr_result = stderr_handle.await.context("stderr reader panicked")?;
     let duration_secs = start.elapsed().as_secs();
 
-    Ok((accumulator, stderr_result, status.code(), duration_secs))
+    // When killed by shutdown, the exit code from `status.code()` is None on Unix
+    // (signal death), which correctly matches our expected behavior.
+    let exit_code = if was_shutdown { None } else { status.code() };
+
+    Ok((accumulator, stderr_result, exit_code, duration_secs))
 }
 
 /// Run a command, streaming output to terminal and capturing it.
@@ -587,22 +627,26 @@ permissions = []
         FlowConfig::parse(TEST_CONFIG).unwrap()
     }
 
+    fn no_shutdown() -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(false))
+    }
+
     #[test]
     fn test_new_creates_executor() {
         let config = test_config();
-        let _executor = CycleExecutor::new(config);
+        let _executor = CycleExecutor::new(config, no_shutdown());
     }
 
     #[test]
     fn test_prepare_rejects_unknown_cycle() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let result = executor.prepare("nonexistent");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_prepare_returns_cycle_name() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let prepared = executor.prepare("coding").unwrap();
         assert_eq!(prepared.cycle_name, "coding");
     }
@@ -611,7 +655,7 @@ permissions = []
     fn test_prepare_returns_cycle_prompt_with_context_injected() {
         // coding has context = "summaries", so even with empty log the prompt
         // should have the context block prepended
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let prepared = executor.prepare("coding").unwrap();
         assert!(
             prepared.prompt.contains("You are Flow's coding cycle."),
@@ -628,14 +672,14 @@ permissions = []
     #[test]
     fn test_prepare_none_context_returns_raw_prompt() {
         // review has context = "none" (default), so prompt should be unchanged
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let prepared = executor.prepare("review").unwrap();
         assert_eq!(prepared.prompt, "You are Flow's review cycle.");
     }
 
     #[test]
     fn test_prepare_resolves_permissions_merging_global_and_cycle() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let prepared = executor.prepare("coding").unwrap();
         assert_eq!(
             prepared.permissions,
@@ -654,7 +698,7 @@ permissions = []
 
     #[test]
     fn test_prepare_with_context_injects_summaries() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let log = vec![make_outcome(1, "review", "Code looked good")];
         let prepared = executor.prepare_with_context("coding", &log).unwrap();
         // coding has context = "summaries"
@@ -672,7 +716,7 @@ permissions = []
 
     #[test]
     fn test_prepare_with_context_none_mode_ignores_log() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let log = vec![make_outcome(1, "coding", "Implemented something")];
         let prepared = executor.prepare_with_context("review", &log).unwrap();
         // review has context = "none" (default)
@@ -684,14 +728,14 @@ permissions = []
 
     #[test]
     fn test_prepare_with_context_rejects_unknown_cycle() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let result = executor.prepare_with_context("nonexistent", &[]);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_prepare_review_gets_only_global_permissions() {
-        let executor = CycleExecutor::new(test_config());
+        let executor = CycleExecutor::new(test_config(), no_shutdown());
         let prepared = executor.prepare("review").unwrap();
         assert_eq!(prepared.permissions, vec!["Read", "Edit(./src/**)"]);
     }
@@ -935,7 +979,7 @@ permissions = ["Edit(./src/**)"]
         cmd2.arg(stream_json);
 
         let (acc, _stderr, exit_code, _duration) =
-            run_command_with_display(cmd2, &display, &mut status_line, 5)
+            run_command_with_display(cmd2, &display, &mut status_line, 5, &AtomicBool::new(false))
                 .await
                 .unwrap();
 
@@ -953,7 +997,7 @@ permissions = ["Edit(./src/**)"]
         cmd.arg(line);
 
         let (acc, _stderr, _exit_code, _duration) =
-            run_command_with_display(cmd, &display, &mut status_line, 5)
+            run_command_with_display(cmd, &display, &mut status_line, 5, &AtomicBool::new(false))
                 .await
                 .unwrap();
 
@@ -986,7 +1030,7 @@ permissions = ["Edit(./src/**)"]
         cmd.arg(lines);
 
         let (acc, _stderr, _exit_code, _duration) =
-            run_command_with_display(cmd, &display, &mut status_line, 5)
+            run_command_with_display(cmd, &display, &mut status_line, 5, &AtomicBool::new(false))
                 .await
                 .unwrap();
 
@@ -1088,6 +1132,71 @@ permissions = ["Edit(./src/**)"]
         assert!(result.permission_denials.is_none());
         assert!(result.files_changed.is_empty());
         assert_eq!(result.tests_passed, 0);
+    }
+
+    // --- shutdown flag tests ---
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_executor_new_accepts_shutdown_flag() {
+        let config = test_config();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let _executor = CycleExecutor::new(config, shutdown);
+    }
+
+    #[tokio::test]
+    async fn test_run_command_stops_on_shutdown_flag() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let display = CycleDisplay::new("test");
+        let mut status_line = StatusLine::new("test");
+
+        // Long-running command: sleep 60 seconds
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("60");
+
+        let shutdown_clone = shutdown.clone();
+        // Set the shutdown flag after a short delay
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            shutdown_clone.store(true, Ordering::Relaxed);
+        });
+
+        let start = std::time::Instant::now();
+        let (_, _, exit_code, _) =
+            run_command_with_display(cmd, &display, &mut status_line, 5, &shutdown)
+                .await
+                .unwrap();
+
+        let elapsed = start.elapsed();
+        // Should complete well under 60 seconds (killed by shutdown flag)
+        assert!(
+            elapsed.as_secs() < 5,
+            "Expected fast shutdown, took {elapsed:?}"
+        );
+        // Exit code is None when killed by signal
+        assert!(
+            exit_code.is_none(),
+            "Expected None exit code (killed), got {exit_code:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_flag_not_set_allows_normal_completion() {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let display = CycleDisplay::new("test");
+        let mut status_line = StatusLine::new("test");
+
+        let mut cmd = std::process::Command::new("echo");
+        cmd.arg("hello");
+
+        let (_, _, exit_code, _) =
+            run_command_with_display(cmd, &display, &mut status_line, 5, &shutdown)
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, Some(0));
     }
 
     #[test]

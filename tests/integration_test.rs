@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tempfile::TempDir;
 
 use flow::cycle::config::FlowConfig;
@@ -8,6 +10,10 @@ use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
 use flow::log::jsonl::JsonlLogger;
 use flow::log::CycleOutcome;
+
+fn no_shutdown() -> Arc<AtomicBool> {
+    Arc::new(AtomicBool::new(false))
+}
 
 const TEST_CONFIG: &str = r#"
 [global]
@@ -50,7 +56,7 @@ async fn test_coding_cycle_end_to_end() {
     let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
     // Step 1: Prepare the cycle (validates config + resolves permissions)
-    let executor = CycleExecutor::new(config);
+    let executor = CycleExecutor::new(config, no_shutdown());
     let prepared = executor.prepare("coding").unwrap();
 
     assert_eq!(prepared.cycle_name, "coding");
@@ -132,7 +138,7 @@ async fn test_failed_cycle_logged_correctly() {
     let temp_dir = TempDir::new().unwrap();
     let logger = JsonlLogger::new(temp_dir.path()).unwrap();
 
-    let executor = CycleExecutor::new(config);
+    let executor = CycleExecutor::new(config, no_shutdown());
     let prepared = executor.prepare("coding").unwrap();
 
     // Execute a command that fails
@@ -201,7 +207,7 @@ async fn test_gardening_auto_triggers_after_coding() {
     let mut iteration: u32 = 1;
 
     // Execute coding cycle (mock success)
-    let executor = CycleExecutor::new(config.clone());
+    let executor = CycleExecutor::new(config.clone(), no_shutdown());
     let coding_prepared = executor.prepare("coding").unwrap();
 
     let mut cmd = Command::new("echo");
@@ -318,7 +324,7 @@ async fn test_config_from_file_and_execute() {
     std::fs::write(&config_path, TEST_CONFIG).unwrap();
 
     let config = FlowConfig::from_path(&config_path).unwrap();
-    let executor = CycleExecutor::new(config);
+    let executor = CycleExecutor::new(config, no_shutdown());
 
     // Prepare cycle - proves config loading + validation works
     let prepared = executor.prepare("coding").unwrap();
@@ -349,7 +355,7 @@ async fn test_multiple_iterations_logged() {
     let config = FlowConfig::parse(TEST_CONFIG).unwrap();
     let temp_dir = TempDir::new().unwrap();
     let logger = JsonlLogger::new(temp_dir.path()).unwrap();
-    let executor = CycleExecutor::new(config);
+    let executor = CycleExecutor::new(config, no_shutdown());
 
     let cycle_names = ["coding", "gardening", "review"];
 
@@ -409,7 +415,7 @@ async fn test_multiple_iterations_logged() {
 #[test]
 fn test_unknown_cycle_rejected() {
     let config = FlowConfig::parse(TEST_CONFIG).unwrap();
-    let executor = CycleExecutor::new(config);
+    let executor = CycleExecutor::new(config, no_shutdown());
 
     let result = executor.prepare("nonexistent");
     assert!(result.is_err());

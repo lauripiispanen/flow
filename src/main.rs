@@ -6,6 +6,8 @@
 #![allow(clippy::multiple_crate_versions)]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -266,6 +268,126 @@ fn apply_cycle_gates(
     }
 }
 
+/// Validate CLI arguments and load configuration.
+///
+/// Returns `(config, fixed_cycle, use_selector)`.
+fn validate_cli(cli: &Cli) -> Result<(FlowConfig, Option<String>, bool)> {
+    let config = FlowConfig::from_path(&cli.config)
+        .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
+
+    let fixed_cycle = cli.cycle.clone();
+    let use_selector = fixed_cycle.is_none();
+
+    if let Some(ref name) = fixed_cycle {
+        config.get_cycle(name).with_context(|| {
+            format!(
+                "Unknown cycle '{}'. Available cycles: {}",
+                name,
+                available_cycle_names(&config)
+            )
+        })?;
+    }
+
+    if use_selector && cli.max_iterations <= 1 {
+        anyhow::bail!(
+            "Missing --cycle argument. Usage: flow --cycle <name>, flow --max-iterations N (AI-selected), or flow doctor"
+        );
+    }
+
+    Ok((config, fixed_cycle, use_selector))
+}
+
+/// Install a Ctrl+C signal handler that sets a shared shutdown flag.
+fn install_signal_handler() -> Arc<AtomicBool> {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_for_signal = shutdown.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            shutdown_for_signal.store(true, Ordering::Relaxed);
+        }
+    });
+    shutdown
+}
+
+/// Auto-trigger dependent cycles after a primary cycle completes.
+#[allow(clippy::too_many_arguments)]
+async fn run_dependent_cycles(
+    config: &FlowConfig,
+    executor: &CycleExecutor,
+    logger: &JsonlLogger,
+    progress_writer: &ProgressWriter,
+    progress: &mut RunProgress,
+    iteration: &mut u32,
+    run_history: &mut Vec<RunOutcome>,
+    completed_cycle: &str,
+    circuit_breaker: u32,
+    max_denials: u32,
+    max_consecutive_failures: u32,
+    shutdown: &AtomicBool,
+) -> Result<()> {
+    let log_entries = logger
+        .read_all()
+        .context("Failed to read log for frequency check")?;
+    let triggered = find_triggered_cycles(config, completed_cycle, &log_entries);
+    for dep_cycle in triggered {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
+        eprintln!("Auto-triggering dependent cycle: {dep_cycle}");
+
+        progress.current_cycle = dep_cycle.to_string();
+        let _ = progress_writer.write(progress);
+
+        let dep_result =
+            execute_and_log(executor, logger, dep_cycle, iteration, circuit_breaker).await?;
+
+        update_progress_after_cycle(progress, dep_cycle, &dep_result);
+        let _ = progress_writer.write(progress);
+
+        apply_cycle_gates(
+            &dep_result,
+            dep_cycle,
+            run_history,
+            max_denials,
+            max_consecutive_failures,
+            *iteration - 1,
+        );
+    }
+    Ok(())
+}
+
+/// Write final progress state and print run summary.
+fn finalize_run(
+    shutdown: &AtomicBool,
+    progress_writer: &ProgressWriter,
+    progress: &mut RunProgress,
+    max_iterations: u32,
+    use_selector: bool,
+    fixed_cycle: Option<&str>,
+) {
+    if shutdown.load(Ordering::Relaxed) {
+        progress.current_status = RunStatus::Stopped;
+        let _ = progress_writer.write(progress);
+        let _ = progress_writer.delete();
+        eprintln!("\nRun interrupted by Ctrl+C");
+    } else {
+        progress.current_status = RunStatus::Completed;
+        let _ = progress_writer.write(progress);
+        let _ = progress_writer.delete();
+
+        if max_iterations > 1 {
+            if use_selector {
+                eprintln!("\nCompleted {max_iterations} autonomous iteration(s)");
+            } else {
+                eprintln!(
+                    "\nCompleted {max_iterations} iteration(s) of '{}'",
+                    fixed_cycle.unwrap_or("?")
+                );
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -278,44 +400,19 @@ async fn main() -> Result<()> {
         return run_init();
     }
 
-    // Load configuration
-    let config = FlowConfig::from_path(&cli.config)
-        .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
+    let (config, fixed_cycle, use_selector) = validate_cli(&cli)?;
 
-    // Determine run mode: fixed cycle or AI-selected
-    let fixed_cycle = cli.cycle.clone();
-    let use_selector = fixed_cycle.is_none();
-
-    // Validate the requested cycle if specified
-    if let Some(ref name) = fixed_cycle {
-        config.get_cycle(name).with_context(|| {
-            format!(
-                "Unknown cycle '{}'. Available cycles: {}",
-                name,
-                available_cycle_names(&config)
-            )
-        })?;
-    }
-
-    // Require --cycle for single-iteration runs without selector
-    if use_selector && cli.max_iterations <= 1 {
-        anyhow::bail!(
-            "Missing --cycle argument. Usage: flow --cycle <name>, flow --max-iterations N (AI-selected), or flow doctor"
-        );
-    }
-
-    // Initialize
+    let shutdown = install_signal_handler();
     let circuit_breaker = config.global.circuit_breaker_repeated;
     let max_denials = config.global.max_permission_denials;
     let max_consecutive_failures = config.global.max_consecutive_failures;
-    let executor = CycleExecutor::new(config.clone());
+    let executor = CycleExecutor::new(config.clone(), shutdown.clone());
     let logger = JsonlLogger::new(&cli.log_dir).context("Failed to initialize JSONL logger")?;
     let progress_writer =
         ProgressWriter::new(&cli.log_dir).context("Failed to initialize progress writer")?;
     let mut iteration: u32 = 1;
     let max_iterations = cli.max_iterations;
     let mut run_history: Vec<RunOutcome> = Vec::new();
-
     let mut progress = RunProgress {
         started_at: chrono::Utc::now(),
         current_iteration: 1,
@@ -332,6 +429,10 @@ async fn main() -> Result<()> {
     // Main iteration loop
     loop {
         if iteration > max_iterations {
+            break;
+        }
+
+        if shutdown.load(Ordering::Relaxed) {
             break;
         }
 
@@ -373,55 +474,36 @@ async fn main() -> Result<()> {
             iteration - 1,
         );
 
-        // Auto-trigger dependent cycles
-        let log_entries = logger
-            .read_all()
-            .context("Failed to read log for frequency check")?;
-        let triggered = find_triggered_cycles(&config, &result.cycle_name, &log_entries);
-        for dep_cycle in triggered {
-            eprintln!("Auto-triggering dependent cycle: {dep_cycle}");
-
-            progress.current_cycle = dep_cycle.to_string();
-            let _ = progress_writer.write(&progress);
-
-            let dep_result = execute_and_log(
-                &executor,
-                &logger,
-                dep_cycle,
-                &mut iteration,
-                circuit_breaker,
-            )
-            .await?;
-
-            update_progress_after_cycle(&mut progress, dep_cycle, &dep_result);
-            let _ = progress_writer.write(&progress);
-
-            apply_cycle_gates(
-                &dep_result,
-                dep_cycle,
-                &mut run_history,
-                max_denials,
-                max_consecutive_failures,
-                iteration - 1,
-            );
+        // Check shutdown before auto-triggering dependent cycles
+        if shutdown.load(Ordering::Relaxed) {
+            break;
         }
+
+        run_dependent_cycles(
+            &config,
+            &executor,
+            &logger,
+            &progress_writer,
+            &mut progress,
+            &mut iteration,
+            &mut run_history,
+            &result.cycle_name,
+            circuit_breaker,
+            max_denials,
+            max_consecutive_failures,
+            &shutdown,
+        )
+        .await?;
     }
 
-    // Write final progress and clean up
-    progress.current_status = RunStatus::Completed;
-    let _ = progress_writer.write(&progress);
-    let _ = progress_writer.delete();
-
-    if max_iterations > 1 {
-        if use_selector {
-            eprintln!("\nCompleted {max_iterations} autonomous iteration(s)");
-        } else {
-            eprintln!(
-                "\nCompleted {max_iterations} iteration(s) of '{}'",
-                fixed_cycle.as_deref().unwrap_or("?")
-            );
-        }
-    }
+    finalize_run(
+        &shutdown,
+        &progress_writer,
+        &mut progress,
+        max_iterations,
+        use_selector,
+        fixed_cycle.as_deref(),
+    );
 
     Ok(())
 }
