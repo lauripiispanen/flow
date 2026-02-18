@@ -9,17 +9,17 @@
 **Orient → Setup → Pick Task → Implement**
 
 1. Read this file (3 min) → [TODO.md](./TODO.md) (2 min) → [plans/002-full-architecture.md](./plans/002-full-architecture.md) (5 min)
-2. Run: `cargo build && cargo test-all` (verify setup — expect 355 passing tests)
+2. Run: `cargo build && cargo test-all` (verify setup — expect 399 passing tests)
 3. Pick task from [TODO.md](./TODO.md)
 4. Follow TDD: Write tests → Implement → Refactor
 
-**Suggested First Tasks**: Selector config section | Periodic summary output | Status bar iteration progress
+**Suggested First Tasks**: `flow doctor --repair` | Add `[selector]` and `[global]` defaults to `cycles.toml`
 
 ---
 
 ## Project Overview
 
-**What**: Rust CLI that orchestrates Claude Code in autonomous cycles (coding, gardening, planning, review)
+**What**: Rust CLI that orchestrates Claude Code in autonomous cycles (coding, gardening, planning, review, docs)
 **Why**: Build a tool that builds itself—Flow will eventually implement its own features
 **How**: Parse `cycles.toml` → Invoke `claude-code` with permissions → Log outcomes → Trigger dependent cycles
 
@@ -33,32 +33,33 @@
 
 **Data Structures**:
 ```
-cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|context | [[cycle.step]]: name|session|prompt|permissions (Phase 2)]
-.flow/log.jsonl: {iteration|cycle|timestamp|outcome|duration_secs|num_turns|total_cost_usd|permission_denial_count|steps? (Phase 2)}
-.flow/progress.json: {started_at|current_iteration|max_iterations|current_cycle|current_status|cycles_executed}
+cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|context | [[cycle.step]]: name|session|prompt|permissions|router|max_visits]
+.flow/log.jsonl: {iteration|cycle|timestamp|outcome|duration_secs|num_turns|total_cost_usd|permission_denial_count|permission_denials|files_changed|tests_passed|steps?}
+.flow/progress.json: {started_at|current_iteration|max_iterations|current_cycle|current_status|cycles_executed|total_duration_secs|total_cost_usd|last_outcome}
 ```
 
 **Components** → Files:
-- Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML (CycleConfig, StepConfig, GlobalConfig)
+- Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML (CycleConfig, StepConfig, GlobalConfig, SelectorConfig)
 - Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle+step)
-- Executor → `src/cycle/executor.rs` | Single-step + multi-step cycle execution with display
-- CLI builder → `src/claude/cli.rs` | Construct subprocess invocation with session resume
-- Stream parser → `src/claude/stream.rs` | Parse stream-JSON, extract results/files/tests
+- Executor → `src/cycle/executor.rs` | Single-step + multi-step cycle execution with display, StepAggregator
+- CLI builder → `src/claude/cli.rs` | Construct subprocess invocation with session resume, `run_for_result()`
+- Stream parser → `src/claude/stream.rs` | Parse stream-JSON, extract results/files/tests/session_id
 - Session mgr → `src/claude/session.rs` | Session tag→ID mapping for step affinity
-- Display → `src/cli/display.rs` | Rich terminal output, status bar, doctor report
-- JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl with step outcomes
+- Display → `src/cli/display.rs` | Rich terminal output, status bar (with iteration progress), doctor report, run summary
+- JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl with step outcomes, permission_denials
 - Progress → `src/log/progress.rs` | Atomic .flow/progress.json writer for run monitoring
-- Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents with frequency
-- Selector → `src/cycle/selector.rs` | AI-driven cycle selection from log context + priorities
-- Router → `src/cycle/router.rs` | Step-level routing (sequential or LLM-driven)
+- Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents with frequency constraints
+- Selector → `src/cycle/selector.rs` | AI-driven cycle selection from log context + priorities, enriched metrics
+- Router → `src/cycle/router.rs` | Step-level routing (sequential or LLM-driven), VisitTracker
 - Context → `src/cycle/context.rs` | Iteration context injection (full/summaries/none)
 - Doctor → `src/doctor.rs` | Diagnostic engine (D001–D006)
 - Init → `src/init.rs` | `flow init` project scaffolding
-- CLI interface → `src/main.rs` | Clap (subcommands: run, init, doctor), execution loop
+- Test helpers → `src/testutil.rs` | Shared test helpers (make_test_outcome)
+- CLI interface → `src/main.rs` | Clap (subcommands: run, init, doctor), execution loop, signal handling, run health
 
 **Phases**:
 - P1 (MVP): ✅ Complete — manual single-step cycles, dogfooded twice
-- P2 (Auto): ✅ Mostly complete — status bar, doctor, multi-iteration, init, AI selector, multi-step cycles, step routing, context modes, SIGINT handling, progress.json, files_changed/tests_passed tracking. Remaining: selector config, periodic summaries, doctor --repair, flow plan
+- P2 (Auto): ✅ Nearly complete — all core features done. Remaining: `doctor --repair`, cycles.toml polish
 - P3 (Advanced): Templates | Timeouts | Parallel cycles | Model profiles | State file | Pause/resume | Gap closure loops | Interactive init
 
 **Full architecture**: [plans/002-full-architecture.md](./plans/002-full-architecture.md)
@@ -85,31 +86,32 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 
 ## Current Status
 
-**Completed**: Phase 1 (MVP) | Phase 2 core: status bar, doctor (D001–D006), multi-iteration, AI selector, multi-step cycles (session affinity, per-step perms, step routing), context modes, SIGINT handling, progress.json, files_changed/tests_passed, cumulative health tracking, flow init, coding plan+review steps
-**In Progress**: Phase 2 wrap-up (selector config, periodic summaries, doctor --repair)
-**Next**: `[selector]` config section → enrich selector context → periodic summary output
+**Completed**: Phase 1 (MVP) | Phase 2 core: status bar (with iteration progress), doctor (D001–D006), multi-iteration loop, AI selector (with enriched context + `[selector]` config), multi-step cycles (session affinity, per-step perms, step routing), context modes, SIGINT handling, progress.json (with total_cost_usd), files_changed/tests_passed tracking, cumulative health tracking, flow init, coding plan+review steps, periodic run summaries, permission denials tracking
+**In Progress**: Phase 2 wrap-up — 2 tasks remaining
+**Next**: `flow doctor --repair` → cycles.toml polish → close Phase 2
 
 **Test Status**:
-- ✅ 355 passing (325 lib + 24 main + 6 integration)
+- ✅ 399 passing (363 lib + 30 main + 6 integration)
 
 **Component Status** (all ✅):
 ```
-config.rs         | 47 tests | CycleConfig, StepConfig, GlobalConfig, StepRouter, validation
+config.rs         | 47 tests | CycleConfig, StepConfig, GlobalConfig, SelectorConfig, validation
 permissions.rs    | 7 tests  | 3-layer additive merge (global+cycle+step)
 session.rs        | 9 tests  | Session tag→ID mapping, --resume args
-executor.rs       | 28 tests | Single+multi-step execution, StepAggregator, shutdown
-cli.rs            | 12 tests | Command builder with session resume
-stream.rs         | 35 tests | Stream-JSON parser, files_changed, tests_passed, session_id
-display.rs        | 28 tests | CycleDisplay, StatusLine, HealthColor, doctor report
-jsonl.rs          | 18 tests | CRUD, StepOutcome, CycleOutcome.steps, permission_denials
-progress.rs       | 11 tests | RunProgress, RunStatus, atomic writes
+executor.rs       | 31 tests | Single+multi-step execution, StepAggregator, shutdown
+cli.rs            | 14 tests | Command builder with session resume, run_for_result
+stream.rs         | 34 tests | Stream-JSON parser, files_changed, tests_passed, session_id
+display.rs        | 40 tests | CycleDisplay, StatusLine (iteration progress), HealthColor, run summary, doctor report
+jsonl.rs          | 21 tests | CRUD, StepOutcome, CycleOutcome.steps, permission_denials, is_success
+progress.rs       | 13 tests | RunProgress, RunStatus, total_cost_usd, atomic writes
 rules.rs          | 14 tests | Dependency triggers + frequency constraints
-selector.rs       | 27 tests | AI-driven cycle selection
-router.rs         | 22 tests | Sequential + LLM step routing, VisitTracker
-context.rs        | tests    | Iteration context injection (full/summaries/none)
-doctor.rs         | 18 tests | D001–D006 diagnostics
+selector.rs       | 34 tests | AI-driven cycle selection, enriched metrics, format_duration
+router.rs         | 23 tests | Sequential + LLM step routing, VisitTracker
+context.rs        | 10 tests | Iteration context injection (full/summaries/none)
+doctor.rs         | 22 tests | D001–D006 diagnostics, aggregation, boundary tests
 init.rs           | 13 tests | Project scaffolding template
-main.rs           | 24 tests | CLI parsing, run loop, gates, helpers
+testutil.rs       | 0 tests  | Shared test helpers (used by other modules)
+main.rs           | 30 tests | CLI parsing, run loop, gates, health, summary helpers
 integration_test  | 6 tests  | End-to-end flows
 ```
 
@@ -184,6 +186,7 @@ cargo fmt-check    # Verify formatting
 ❌ Hardcode paths (use relative paths) | ❌ Block dogfooding (ship P1 fast to learn)
 ❌ Assert on external crate error messages (fragile — assert `is_err()` or match only your own messages)
 ❌ Use agent memory files for project knowledge (all guidance must be explicit in version-controlled project files)
+❌ Compare values on different scales (e.g. cross-run totals vs per-run counters — use a single measurement immune to resets, like position-from-end)
 ❌ Build integrations without verifying the external tool's actual interface (always check real CLI docs/help before implementing — we almost built permissions on an invented format)
 
 ---
@@ -216,22 +219,22 @@ flow/
 │   ├── doctor.rs          ← Diagnostic engine (D001–D006)
 │   ├── testutil.rs        ← Shared test helpers (make_test_outcome)
 │   ├── cycle/
-│   │   ├── config.rs      ← Parse cycles.toml (CycleConfig, StepConfig, GlobalConfig)
-│   │   ├── executor.rs    ← Single+multi-step execution, StepAggregator
+│   │   ├── config.rs      ← Parse cycles.toml (CycleConfig, StepConfig, GlobalConfig, SelectorConfig)
+│   │   ├── executor.rs    ← Single+multi-step execution, StepAggregator, shutdown
 │   │   ├── rules.rs       ← Dependency triggers + frequency constraints
-│   │   ├── selector.rs    ← AI-driven cycle selection
-│   │   ├── router.rs      ← Step routing (sequential + LLM)
+│   │   ├── selector.rs    ← AI-driven cycle selection, enriched metrics
+│   │   ├── router.rs      ← Step routing (sequential + LLM), VisitTracker
 │   │   └── context.rs     ← Iteration context injection
 │   ├── claude/
-│   │   ├── cli.rs         ← CLI command builder with session resume
+│   │   ├── cli.rs         ← CLI command builder with session resume, run_for_result
 │   │   ├── permissions.rs ← 3-layer permission resolver (global+cycle+step)
 │   │   ├── stream.rs      ← Stream-JSON parser (events, files, tests, session_id)
 │   │   └── session.rs     ← Session tag→ID mapping for step affinity
 │   ├── cli/
-│   │   └── display.rs     ← Rich display, status bar, health colors, doctor report
+│   │   └── display.rs     ← Rich display, status bar, health colors, run summary, doctor report
 │   └── log/
-│       ├── jsonl.rs       ← JSONL logger (CycleOutcome, StepOutcome)
-│       └── progress.rs    ← Atomic progress.json writer (RunProgress, RunStatus)
+│       ├── jsonl.rs       ← JSONL logger (CycleOutcome, StepOutcome, is_success)
+│       └── progress.rs    ← Atomic progress.json writer (RunProgress, RunStatus, total_cost_usd)
 └── tests/
     └── integration_test.rs ← End-to-end tests
 ```
@@ -265,13 +268,11 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 **Phase 1 complete. Phase 2 nearly complete.** Remaining Phase 2 tasks:
 
-**Medium**: Add `[selector]` config section to cycles.toml — decouple selector from `--todo` flag
-**Easy**: Periodic summary output every N iterations during multi-iteration runs
-**Easy**: Show iteration progress in status bar (`[3/10] [coding] ▶ ...`)
-**Medium**: `flow doctor --repair` auto-fix mode for safe config fixes
+**Medium**: `flow doctor --repair` auto-fix mode — read-modify-write cycles.toml for safe config fixes
+**Easy**: Add `[selector]` section and explicit `[global]` defaults to `cycles.toml`
 
 See [TODO.md](./TODO.md) for full task list.
 
 ---
 
-**Last Updated**: 2026-02-18 | **Status**: Phase 1 complete, Phase 2 nearly complete (355 tests) | **Next Milestone**: Selector config section → close Phase 2
+**Last Updated**: 2026-02-18 | **Status**: Phase 1 complete, Phase 2 nearly complete (399 tests) | **Next Milestone**: `doctor --repair` → cycles.toml polish → close Phase 2

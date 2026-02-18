@@ -1062,8 +1062,8 @@ prompt = "Plan."
         let step_names: Vec<&str> = coding.steps.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(
             step_names,
-            vec!["plan", "plan-review", "implement"],
-            "coding cycle should have plan, plan-review, implement steps"
+            vec!["plan", "plan-review", "implement", "reflect"],
+            "coding cycle should have plan, plan-review, implement, reflect steps"
         );
 
         // plan step: architect session, read-only + plan file write

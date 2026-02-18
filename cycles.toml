@@ -87,6 +87,19 @@ Commit your changes when done.
 """
 permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
 
+[[cycle.step]]
+name = "reflect"
+session = "coder"
+prompt = """
+You just finished implementing. Follow the /reflect skill workflow.
+
+Keep it brief — identify what went well, what needed guidance, and any concrete
+action items. If action items arise, implement them now or add them to TODO.md.
+Do NOT do gardening work (refactoring, dead code removal, dependency updates).
+Focus only on process and workflow improvements.
+"""
+permissions = ["Edit(./TODO.md)", "Edit(./AGENTS.md)", "Bash(git *)"]
+
 [[cycle]]
 name = "gardening"
 description = "Dependency updates, refactoring, docs, dead code removal, test coverage"
