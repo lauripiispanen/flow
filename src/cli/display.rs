@@ -268,6 +268,8 @@ pub struct StatusLine {
     cost_usd: f64,
     error_count: u32,
     start: std::time::Instant,
+    /// Optional `(current_iteration, max_iterations)` for multi-iteration runs.
+    iteration_context: Option<(u32, u32)>,
 }
 
 impl StatusLine {
@@ -280,6 +282,22 @@ impl StatusLine {
             cost_usd: 0.0,
             error_count: 0,
             start: std::time::Instant::now(),
+            iteration_context: None,
+        }
+    }
+
+    /// Create a status line with iteration context for multi-iteration runs.
+    ///
+    /// When `max > 1`, renders a `[current/max] ` prefix before the cycle name.
+    #[must_use]
+    pub fn with_iteration(cycle_name: &str, current: u32, max: u32) -> Self {
+        Self {
+            cycle_name: cycle_name.to_string(),
+            turn_count: 0,
+            cost_usd: 0.0,
+            error_count: 0,
+            start: std::time::Instant::now(),
+            iteration_context: Some((current, max)),
         }
     }
 
@@ -292,6 +310,25 @@ impl StatusLine {
             cost_usd: 0.0,
             error_count: 0,
             start,
+            iteration_context: None,
+        }
+    }
+
+    /// Create a status line with iteration context and a specific start time (for testing)
+    #[cfg(test)]
+    fn with_iteration_and_start(
+        cycle_name: &str,
+        current: u32,
+        max: u32,
+        start: std::time::Instant,
+    ) -> Self {
+        Self {
+            cycle_name: cycle_name.to_string(),
+            turn_count: 0,
+            cost_usd: 0.0,
+            error_count: 0,
+            start,
+            iteration_context: Some((current, max)),
         }
     }
 
@@ -324,8 +361,12 @@ impl StatusLine {
         let elapsed = self.start.elapsed().as_secs();
         let mins = elapsed / 60;
         let secs = elapsed % 60;
+        let prefix = match self.iteration_context {
+            Some((current, max)) if max > 1 => format!("[{current}/{max}] "),
+            _ => String::new(),
+        };
         format!(
-            "[{}] \u{25b6} {} turns | ${:.2} | {}m {:02}s | {} errors",
+            "{prefix}[{}] \u{25b6} {} turns | ${:.2} | {}m {:02}s | {} errors",
             self.cycle_name, self.turn_count, self.cost_usd, mins, secs, self.error_count
         )
     }
@@ -829,6 +870,63 @@ mod tests {
         let cycles = std::collections::BTreeMap::new();
         let output = render_run_summary(1, 5, 0.0, &cycles, 1, 0, 30);
         assert!(output.contains("$0.00"));
+    }
+
+    #[test]
+    fn test_status_line_render_with_iteration_context() {
+        let status = StatusLine::with_iteration("coding", 3, 10);
+        let rendered = status.render();
+        assert!(
+            rendered.starts_with("[3/10] "),
+            "Should start with iteration prefix: {rendered}"
+        );
+        assert!(
+            rendered.contains("[coding]"),
+            "Should contain cycle name: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_status_line_render_without_iteration_context() {
+        let status = StatusLine::new("coding");
+        let rendered = status.render();
+        assert!(
+            !rendered.contains("[3/10]"),
+            "Should not have iteration prefix: {rendered}"
+        );
+        assert!(
+            rendered.starts_with("[coding]"),
+            "Should start with cycle name: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_status_line_single_iteration_no_prefix() {
+        let status = StatusLine::with_iteration("coding", 1, 1);
+        let rendered = status.render();
+        assert!(
+            rendered.starts_with("[coding]"),
+            "Single iteration should not show [1/1] prefix: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_status_line_with_iteration_and_start() {
+        let status =
+            StatusLine::with_iteration_and_start("coding", 5, 20, std::time::Instant::now());
+        let rendered = status.render();
+        assert!(
+            rendered.starts_with("[5/20] "),
+            "Should start with iteration prefix: {rendered}"
+        );
+        assert!(
+            rendered.contains("[coding]"),
+            "Should contain cycle name: {rendered}"
+        );
+        assert!(
+            rendered.contains("0 turns"),
+            "Should show initial turn count: {rendered}"
+        );
     }
 
     #[test]

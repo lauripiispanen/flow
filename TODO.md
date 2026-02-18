@@ -39,10 +39,11 @@
   - Description: Added `summary_interval` to `GlobalConfig` (default 5, 0 = disabled). Added `total_cost_usd` to `RunProgress` (backward compat via serde default). `render_run_summary()` in `display.rs` formats a compact 4-line block: iteration progress, cycle breakdown (coding×3, gardening×2), success rate (4/5 succeeded), cost + duration. Wired into main loop via `print_periodic_summary()` + `should_print_summary()`. 12 new tests.
   - Files: `src/cycle/config.rs`, `src/log/progress.rs`, `src/cli/display.rs`, `src/main.rs`
 
-- [ ] Show iteration progress in status bar
+- [x] Show iteration progress in status bar
+  - Status: Completed
   - Priority: P1
-  - Description: The status bar currently shows `[coding] ▶ 12 turns | $1.23 | 2m 15s | 0 errors`. Add iteration context: `[3/10] [coding] ▶ ...` and cumulative stats: `[coding×2, gardening×1]`. Requires passing iteration number and `RunProgress` into the status bar renderer.
-  - Files: `src/cli/display.rs`, `src/cycle/executor.rs`
+  - Description: Added `iteration_context: Option<(u32, u32)>` to `StatusLine`. When `max > 1`, renders `[3/10] [coding] ▶ ...` prefix. Threaded through `execute_with_display()` → `execute_single_step()`/`execute_steps()` → `execute_and_log()`. Single-iteration runs (`max == 1`) suppress the prefix. Cumulative stats deferred — periodic summary already covers that. 4 new tests.
+  - Files: `src/cli/display.rs`, `src/cycle/executor.rs`, `src/main.rs`
 
 - [ ] `flow doctor --repair` auto-fix mode
   - Priority: P1

@@ -210,12 +210,18 @@ async fn execute_and_log(
     cycle_name: &str,
     iteration: &mut u32,
     circuit_breaker_threshold: u32,
+    iteration_context: Option<(u32, u32)>,
 ) -> Result<flow::CycleResult> {
     // Read log entries for context injection
     let log_entries = logger.read_all().unwrap_or_default();
 
     let result = executor
-        .execute_with_display(cycle_name, circuit_breaker_threshold, &log_entries)
+        .execute_with_display(
+            cycle_name,
+            circuit_breaker_threshold,
+            &log_entries,
+            iteration_context,
+        )
         .await
         .with_context(|| format!("Failed to execute cycle '{cycle_name}'"))?;
 
@@ -345,8 +351,16 @@ async fn run_dependent_cycles(
         progress.current_cycle = dep_cycle.to_string();
         let _ = progress_writer.write(progress);
 
-        let dep_result =
-            execute_and_log(executor, logger, dep_cycle, iteration, circuit_breaker).await?;
+        let iter_ctx = Some((progress.current_iteration, progress.max_iterations));
+        let dep_result = execute_and_log(
+            executor,
+            logger,
+            dep_cycle,
+            iteration,
+            circuit_breaker,
+            iter_ctx,
+        )
+        .await?;
 
         update_progress_after_cycle(progress, dep_cycle, &dep_result);
         let _ = progress_writer.write(progress);
@@ -467,11 +481,7 @@ async fn main() -> Result<()> {
 
     // Main iteration loop
     loop {
-        if iteration > max_iterations {
-            break;
-        }
-
-        if shutdown.load(Ordering::Relaxed) {
+        if iteration > max_iterations || shutdown.load(Ordering::Relaxed) {
             break;
         }
 
@@ -497,6 +507,7 @@ async fn main() -> Result<()> {
             &cycle_name,
             &mut iteration,
             circuit_breaker,
+            Some((progress.current_iteration, max_iterations)),
         )
         .await?;
 

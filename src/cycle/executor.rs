@@ -129,6 +129,7 @@ impl CycleExecutor {
         cycle_name: &str,
         circuit_breaker_threshold: u32,
         log_entries: &[CycleOutcome],
+        iteration_context: Option<(u32, u32)>,
     ) -> Result<CycleResult> {
         let cycle = self
             .config
@@ -139,11 +140,23 @@ impl CycleExecutor {
         display.print_header();
 
         if cycle.is_multi_step() {
-            self.execute_steps(cycle_name, circuit_breaker_threshold, log_entries, &display)
-                .await
+            self.execute_steps(
+                cycle_name,
+                circuit_breaker_threshold,
+                log_entries,
+                &display,
+                iteration_context,
+            )
+            .await
         } else {
-            self.execute_single_step(cycle_name, circuit_breaker_threshold, log_entries, &display)
-                .await
+            self.execute_single_step(
+                cycle_name,
+                circuit_breaker_threshold,
+                log_entries,
+                &display,
+                iteration_context,
+            )
+            .await
         }
     }
 
@@ -154,10 +167,14 @@ impl CycleExecutor {
         circuit_breaker_threshold: u32,
         log_entries: &[CycleOutcome],
         display: &CycleDisplay,
+        iteration_context: Option<(u32, u32)>,
     ) -> Result<CycleResult> {
         let prepared = self.prepare_with_context(cycle_name, log_entries)?;
         let cmd = build_command(&prepared.prompt, &prepared.permissions);
-        let mut status_line = StatusLine::new(cycle_name);
+        let mut status_line = match iteration_context {
+            Some((c, m)) => StatusLine::with_iteration(cycle_name, c, m),
+            None => StatusLine::new(cycle_name),
+        };
 
         let (accumulator, stderr, exit_code, duration_secs) = run_command_with_display(
             cmd,
@@ -197,6 +214,7 @@ impl CycleExecutor {
         circuit_breaker_threshold: u32,
         log_entries: &[CycleOutcome],
         display: &CycleDisplay,
+        iteration_context: Option<(u32, u32)>,
     ) -> Result<CycleResult> {
         let cycle = self
             .config
@@ -222,7 +240,10 @@ impl CycleExecutor {
             visit_tracker.record(&step.name);
 
             let step_label = format!("{cycle_name}/{}", step.name);
-            let mut status_line = StatusLine::new(&step_label);
+            let mut status_line = match iteration_context {
+                Some((c, m)) => StatusLine::with_iteration(&step_label, c, m),
+                None => StatusLine::new(&step_label),
+            };
             let step_prompt = inject_context(&step.prompt, context.clone());
             let permissions = resolve_step_permissions(&self.config.global, cycle, step);
             let resume_args = session_mgr.resume_args(step.session.as_deref());
