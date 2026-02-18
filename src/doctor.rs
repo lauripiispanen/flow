@@ -134,10 +134,7 @@ fn check_failure_rate(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
     let cycle_outcomes = group_by_cycle(log);
 
     for (cycle_name, outcomes) in &cycle_outcomes {
-        let failure_count = outcomes
-            .iter()
-            .filter(|o| o.outcome.starts_with("Failed"))
-            .count();
+        let failure_count = outcomes.iter().filter(|o| !o.is_success()).count();
         let total = outcomes.len();
 
         // If more than half of runs failed, flag it

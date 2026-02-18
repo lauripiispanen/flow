@@ -308,6 +308,17 @@ mod tests {
     }
 
     #[test]
+    fn test_full_omits_permission_denials_when_none() {
+        let outcome = make_outcome(1, "coding", "done");
+        // make_test_outcome sets permission_denial_count = None
+        let result = build_context(&ContextMode::Full, &[outcome]).unwrap();
+        assert!(
+            !result.contains("Permission denials"),
+            "Should omit denial section when count is None: {result}"
+        );
+    }
+
+    #[test]
     fn test_full_has_header() {
         let result = build_context(&ContextMode::Full, &[]).unwrap();
         assert!(

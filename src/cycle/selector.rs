@@ -150,9 +150,7 @@ pub fn summarize_log(log: &[CycleOutcome], max_recent: usize) -> LogSummary {
     for outcome in log {
         *cycle_counts.entry(outcome.cycle.clone()).or_insert(0) += 1;
 
-        // Consider success if outcome doesn't start with "Failed"
-        let success = !outcome.outcome.starts_with("Failed");
-        if success {
+        if outcome.is_success() {
             *cycle_successes.entry(outcome.cycle.clone()).or_insert(0) += 1;
         }
 
@@ -181,7 +179,7 @@ pub fn summarize_log(log: &[CycleOutcome], max_recent: usize) -> LogSummary {
         .map(|o| RecentOutcome {
             iteration: o.iteration,
             cycle: o.cycle.clone(),
-            success: !o.outcome.starts_with("Failed"),
+            success: o.is_success(),
             outcome: o.outcome.clone(),
             files_changed_count: o.files_changed.len(),
             tests_passed: o.tests_passed,
@@ -839,6 +837,28 @@ prompt = "Garden"
             formatted.contains("Implemented feature X"),
             "Should show outcome: {formatted}"
         );
+    }
+
+    // --- format_duration tests ---
+
+    #[test]
+    fn test_format_duration_seconds_only() {
+        assert_eq!(format_duration(30), "30s");
+    }
+
+    #[test]
+    fn test_format_duration_minutes_only() {
+        assert_eq!(format_duration(120), "2m");
+    }
+
+    #[test]
+    fn test_format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(135), "2m 15s");
+    }
+
+    #[test]
+    fn test_format_duration_zero() {
+        assert_eq!(format_duration(0), "0s");
     }
 
     #[test]

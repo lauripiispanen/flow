@@ -61,6 +61,14 @@ pub struct CycleOutcome {
     pub steps: Option<Vec<StepOutcome>>,
 }
 
+impl CycleOutcome {
+    /// Whether this cycle execution succeeded (outcome does not start with "Failed").
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        !self.outcome.starts_with("Failed")
+    }
+}
+
 /// JSONL logger for cycle execution history
 ///
 /// Provides append-only logging to `.flow/log.jsonl`.
@@ -164,6 +172,22 @@ mod tests {
     use super::*;
     use crate::testutil::make_test_outcome;
     use tempfile::TempDir;
+
+    // --- CycleOutcome::is_success tests ---
+
+    #[test]
+    fn test_is_success_returns_true_for_normal_outcome() {
+        let outcome = make_test_outcome(1, "coding", "Implemented feature X");
+        assert!(outcome.is_success());
+    }
+
+    #[test]
+    fn test_is_success_returns_false_for_failure_outcome() {
+        let outcome = make_test_outcome(1, "coding", "Failed with exit code 1");
+        assert!(!outcome.is_success());
+    }
+
+    // --- JsonlLogger tests ---
 
     #[test]
     fn test_new_logger_creates_directory() {
