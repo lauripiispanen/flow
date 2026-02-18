@@ -66,10 +66,7 @@ impl VisitTracker {
 ///
 /// Returns `None` if the current step is the last one (cycle complete).
 #[must_use]
-pub(crate) const fn route_sequential(
-    current_step_index: usize,
-    total_steps: usize,
-) -> Option<usize> {
+const fn route_sequential(current_step_index: usize, total_steps: usize) -> Option<usize> {
     let next = current_step_index + 1;
     if next < total_steps {
         Some(next)

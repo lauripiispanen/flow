@@ -219,8 +219,6 @@ fn parse_tests_passed(content: &str) -> Option<u32> {
 pub struct StreamAccumulator {
     /// Text fragments collected from assistant events
     pub text_fragments: Vec<String>,
-    /// Tool names used during the session
-    pub tools_used: Vec<String>,
     /// Final result (populated from Result event)
     pub result: Option<StreamEvent>,
     /// Session ID from `SystemInit` event (used for session affinity in multi-step cycles)
@@ -248,7 +246,6 @@ impl StreamAccumulator {
                 self.text_fragments.push(text.clone());
             }
             StreamEvent::ToolUse { tool_name, input } => {
-                self.tools_used.push(tool_name.clone());
                 if matches!(tool_name.as_str(), "Edit" | "Write") {
                     if let Some(path) = input.get("file_path").and_then(Value::as_str) {
                         if !self.files_changed.contains(&path.to_string()) {
@@ -517,20 +514,6 @@ mod tests {
             text: "World".to_string(),
         });
         assert_eq!(acc.text_fragments, vec!["Hello", "World"]);
-    }
-
-    #[test]
-    fn test_accumulator_collects_tool_names() {
-        let mut acc = StreamAccumulator::new();
-        acc.process(&StreamEvent::ToolUse {
-            tool_name: "Edit".to_string(),
-            input: Value::Null,
-        });
-        acc.process(&StreamEvent::ToolUse {
-            tool_name: "Bash".to_string(),
-            input: Value::Null,
-        });
-        assert_eq!(acc.tools_used, vec!["Edit", "Bash"]);
     }
 
     #[test]

@@ -107,11 +107,9 @@ impl CycleDisplay {
         }
 
         // Stats line
-        let duration_secs = duration_ms / 1000;
-        let mins = duration_secs / 60;
-        let secs = duration_secs % 60;
+        let duration = format_duration(duration_ms / 1000);
         eprintln!(
-            "  {} {num_turns} turns | ${total_cost_usd:.2} | {mins}m {secs}s",
+            "  {} {num_turns} turns | ${total_cost_usd:.2} | {duration}",
             "Stats:".dimmed()
         );
 
@@ -944,5 +942,25 @@ mod tests {
         });
         assert_eq!(status.turn_count, 0);
         assert_eq!(status.error_count, 0);
+    }
+
+    #[test]
+    fn test_format_duration_over_one_hour() {
+        assert_eq!(format_duration(3661), "61m 1s");
+    }
+
+    #[test]
+    fn test_format_duration_boundary_59_seconds() {
+        assert_eq!(format_duration(59), "59s");
+    }
+
+    #[test]
+    fn test_format_duration_boundary_60_seconds() {
+        assert_eq!(format_duration(60), "1m");
+    }
+
+    #[test]
+    fn test_format_duration_boundary_61_seconds() {
+        assert_eq!(format_duration(61), "1m 1s");
     }
 }

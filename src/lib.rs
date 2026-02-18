@@ -18,12 +18,10 @@ pub mod testutil;
 // Re-export commonly used types
 pub use claude::cli::{build_command, build_command_with_session, run_for_result};
 pub use claude::permissions::{resolve_permissions, resolve_step_permissions};
-pub use claude::session::SessionManager;
 pub use claude::stream::{parse_event, StreamAccumulator, StreamEvent};
 pub use cli::{render_diagnostic_report, CycleDisplay, StatusLine};
 pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig, StepConfig, StepRouter};
-pub use cycle::executor::{CycleExecutor, CycleResult, PreparedCycle};
-// RouteDecision, VisitTracker are internal to cycle execution — not re-exported
+pub use cycle::executor::{CycleExecutor, CycleResult};
 pub use cycle::rules::find_triggered_cycles;
-pub use cycle::selector::{select_cycle, CycleSelection};
+pub use cycle::selector::select_cycle;
 pub use log::{CycleOutcome, JsonlLogger, ProgressWriter, RunProgress, RunStatus};
