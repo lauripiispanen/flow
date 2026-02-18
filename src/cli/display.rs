@@ -205,7 +205,7 @@ pub fn render_diagnostic_report(report: &crate::doctor::DiagnosticReport) -> Str
 
 /// Health color for the status bar
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HealthColor {
+pub(crate) enum HealthColor {
     /// Healthy: 0 errors
     Green,
     /// Warning: 1-2 errors
@@ -290,7 +290,7 @@ impl StatusLine {
     ///
     /// Returns a color indicator: green (0 errors), yellow (1-2), red (3+).
     #[must_use]
-    pub const fn health_color(&self) -> HealthColor {
+    const fn health_color(&self) -> HealthColor {
         match self.error_count {
             0 => HealthColor::Green,
             1..=2 => HealthColor::Yellow,

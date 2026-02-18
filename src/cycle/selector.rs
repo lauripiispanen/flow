@@ -6,11 +6,8 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use tokio::io::AsyncBufReadExt;
-use tokio::process::Command as TokioCommand;
 
-use crate::claude::cli::build_command;
-use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
+use crate::claude::cli::{build_command, run_for_result};
 use crate::cycle::config::FlowConfig;
 use crate::log::CycleOutcome;
 
@@ -356,47 +353,8 @@ pub async fn select_cycle(
     todo_content: &str,
 ) -> Result<CycleSelection> {
     let prompt = build_selector_prompt(config, log, todo_content);
-
-    // Build a minimal command — selector needs no tool permissions
     let cmd = build_command(&prompt, &[]);
-
-    let mut child = TokioCommand::from(cmd)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .context("Failed to spawn claude for cycle selection")?;
-
-    let stdout = child.stdout.take().context("No stdout from claude")?;
-    let reader = tokio::io::BufReader::new(stdout);
-    let mut lines = reader.lines();
-    let mut accumulator = StreamAccumulator::new();
-
-    while let Some(line) = lines
-        .next_line()
-        .await
-        .context("Failed to read selector output")?
-    {
-        if let Some(event) = parse_event(&line) {
-            accumulator.process(&event);
-            // We only care about the final result
-            if matches!(event, StreamEvent::Result { .. }) {
-                break;
-            }
-        }
-    }
-
-    // Ensure the child process finishes
-    let _ = child.wait().await;
-
-    // Extract result text from the accumulator
-    let result_text = match &accumulator.result {
-        Some(StreamEvent::Result { result_text, .. }) => result_text.clone(),
-        _ => accumulator.text_fragments.join(""),
-    };
-
-    if result_text.is_empty() {
-        anyhow::bail!("Cycle selector returned empty response");
-    }
+    let result_text = run_for_result(cmd).await?;
 
     parse_selection(&result_text, config)
         .context("Failed to parse cycle selection from Claude response")

@@ -7,17 +7,14 @@
 
 use std::collections::HashMap;
 
-use anyhow::{bail, Context, Result};
-use tokio::io::AsyncBufReadExt;
-use tokio::process::Command as TokioCommand;
+use anyhow::{Context, Result};
 
-use crate::claude::cli::build_command;
-use crate::claude::stream::{parse_event, StreamAccumulator, StreamEvent};
+use crate::claude::cli::{build_command, run_for_result};
 use crate::cycle::config::{StepConfig, StepRouter};
 
 /// The result of routing after a step completes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RouteDecision {
+pub(crate) enum RouteDecision {
     /// Proceed to a specific step by name.
     GoTo {
         /// The name of the next step to execute.
@@ -34,7 +31,7 @@ pub enum RouteDecision {
 
 /// Track how many times each step has been visited in the current cycle execution.
 #[derive(Debug, Default)]
-pub struct VisitTracker {
+pub(crate) struct VisitTracker {
     visits: HashMap<String, u32>,
 }
 
@@ -54,7 +51,7 @@ impl VisitTracker {
 
     /// Get the current visit count for a step.
     #[must_use]
-    pub fn count(&self, step_name: &str) -> u32 {
+    fn count(&self, step_name: &str) -> u32 {
         self.visits.get(step_name).copied().unwrap_or(0)
     }
 
@@ -69,7 +66,10 @@ impl VisitTracker {
 ///
 /// Returns `None` if the current step is the last one (cycle complete).
 #[must_use]
-pub const fn route_sequential(current_step_index: usize, total_steps: usize) -> Option<usize> {
+pub(crate) const fn route_sequential(
+    current_step_index: usize,
+    total_steps: usize,
+) -> Option<usize> {
     let next = current_step_index + 1;
     if next < total_steps {
         Some(next)
@@ -83,7 +83,7 @@ pub const fn route_sequential(current_step_index: usize, total_steps: usize) -> 
 /// Provides the completed step's output text and the list of available step
 /// names so the LLM can choose what to do next.
 #[must_use]
-pub fn build_router_prompt(
+fn build_router_prompt(
     completed_step_name: &str,
     result_text: &str,
     available_steps: &[&str],
@@ -121,7 +121,7 @@ Respond with ONLY a JSON object on a single line, no other text:
 /// Looks for a JSON object with `"next"` and `"reason"` fields.
 /// Falls back to matching step names in the text if JSON parsing fails.
 #[must_use]
-pub fn parse_router_response(response: &str, available_steps: &[&str]) -> Option<RouteDecision> {
+fn parse_router_response(response: &str, available_steps: &[&str]) -> Option<RouteDecision> {
     // Try JSON parsing first
     for line in response.lines() {
         let trimmed = line.trim();
@@ -171,51 +171,16 @@ pub fn parse_router_response(response: &str, available_steps: &[&str]) -> Option
 ///
 /// Builds a router prompt, invokes Claude with no tool permissions,
 /// and parses the response to get a `RouteDecision`.
-pub async fn route_with_llm(
+async fn route_with_llm(
     completed_step_name: &str,
     result_text: &str,
     available_steps: &[&str],
 ) -> Result<RouteDecision> {
     let prompt = build_router_prompt(completed_step_name, result_text, available_steps);
-
     let cmd = build_command(&prompt, &[]);
+    let response = run_for_result(cmd).await?;
 
-    let mut child = TokioCommand::from(cmd)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .context("Failed to spawn claude for step routing")?;
-
-    let stdout = child.stdout.take().context("No stdout from claude")?;
-    let reader = tokio::io::BufReader::new(stdout);
-    let mut lines = reader.lines();
-    let mut accumulator = StreamAccumulator::new();
-
-    while let Some(line) = lines
-        .next_line()
-        .await
-        .context("Failed to read router output")?
-    {
-        if let Some(event) = parse_event(&line) {
-            accumulator.process(&event);
-            if matches!(event, StreamEvent::Result { .. }) {
-                break;
-            }
-        }
-    }
-
-    let _ = child.wait().await;
-
-    let result_text = match &accumulator.result {
-        Some(StreamEvent::Result { result_text, .. }) => result_text.clone(),
-        _ => accumulator.text_fragments.join(""),
-    };
-
-    if result_text.is_empty() {
-        bail!("Step router returned empty response");
-    }
-
-    parse_router_response(&result_text, available_steps)
+    parse_router_response(&response, available_steps)
         .context("Failed to parse step routing from Claude response")
 }
 
@@ -225,7 +190,7 @@ pub async fn route_with_llm(
 /// For `Llm` routing, this invokes Claude Code to make the decision.
 ///
 /// Returns `Ok(None)` when the cycle is complete (no more steps).
-pub async fn determine_next_step(
+pub(crate) async fn determine_next_step(
     completed_step: &StepConfig,
     completed_step_index: usize,
     result_text: &str,

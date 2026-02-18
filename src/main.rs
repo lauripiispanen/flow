@@ -236,9 +236,13 @@ async fn execute_and_log(
     Ok(result)
 }
 
-/// Apply post-cycle checks: record outcome, check failure gate, denial gate, health check.
+/// Apply post-cycle checks: record outcome, check denial gate, health check.
 ///
 /// Exits the process if any gate fires. Returns normally if the run should continue.
+///
+/// Individual cycle failures are recorded but do not immediately stop the run.
+/// Instead, the consecutive-failure health check (`max_consecutive_failures`)
+/// determines when to stop — e.g., default threshold 3 means 3 failures in a row.
 fn apply_cycle_gates(
     result: &flow::CycleResult,
     cycle_name: &str,
@@ -252,8 +256,10 @@ fn apply_cycle_gates(
     });
 
     if !result.success {
-        eprintln!("Cycle '{cycle_name}' failed in iteration {iteration}, stopping.");
-        std::process::exit(result.exit_code.unwrap_or(1));
+        eprintln!(
+            "Cycle '{cycle_name}' failed in iteration {iteration} (exit code {}).",
+            format_exit_code(result.exit_code)
+        );
     }
 
     check_denial_gate(
@@ -861,6 +867,73 @@ prompt = "Garden"
         assert!(
             msg.contains('3'),
             "Message should mention failure count: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_run_health_disabled_when_zero() {
+        let history = vec![
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+            RunOutcome { success: false },
+        ];
+        // max_consecutive_failures = 0 disables the check
+        assert!(check_run_health(&history, 0).is_none());
+    }
+
+    #[test]
+    fn test_apply_cycle_gates_records_failure_in_history() {
+        // After the fix, failures are recorded but do not call process::exit
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: false,
+            exit_code: Some(1),
+            stderr: String::new(),
+            duration_secs: 10,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
+        };
+
+        let mut run_history = Vec::new();
+        // With max_consecutive_failures high enough, a single failure should not exit
+        apply_cycle_gates(&result, "coding", &mut run_history, 10, 3, 1);
+
+        assert_eq!(run_history.len(), 1);
+        assert!(
+            !run_history[0].success,
+            "Failure should be recorded in history"
+        );
+    }
+
+    #[test]
+    fn test_apply_cycle_gates_records_success_in_history() {
+        let result = CycleResult {
+            cycle_name: "coding".to_string(),
+            success: true,
+            exit_code: Some(0),
+            stderr: String::new(),
+            duration_secs: 60,
+            result_text: None,
+            num_turns: None,
+            total_cost_usd: None,
+            permission_denial_count: None,
+            permission_denials: None,
+            files_changed: vec![],
+            tests_passed: 0,
+        };
+
+        let mut run_history = Vec::new();
+        apply_cycle_gates(&result, "coding", &mut run_history, 10, 3, 1);
+
+        assert_eq!(run_history.len(), 1);
+        assert!(
+            run_history[0].success,
+            "Success should be recorded in history"
         );
     }
 }

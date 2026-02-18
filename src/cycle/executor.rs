@@ -1247,4 +1247,37 @@ permissions = ["Edit(./src/**)"]
         assert_eq!(result.result_text.as_deref(), Some("Step 2 done"));
         assert_eq!(result.stderr, "some error");
     }
+
+    #[test]
+    fn test_step_aggregator_joins_multiple_stderr_with_newlines() {
+        let mut agg = StepAggregator::new();
+
+        let mut acc1 = StreamAccumulator::new();
+        acc1.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Step 1 done".to_string(),
+            num_turns: 1,
+            total_cost_usd: 0.1,
+            duration_ms: 1000,
+            permission_denials: vec![],
+        });
+        agg.accumulate(&acc1, "error from step 1", Some(0), 10);
+
+        let mut acc2 = StreamAccumulator::new();
+        acc2.process(&StreamEvent::Result {
+            is_error: false,
+            result_text: "Step 2 done".to_string(),
+            num_turns: 1,
+            total_cost_usd: 0.1,
+            duration_ms: 1000,
+            permission_denials: vec![],
+        });
+        agg.accumulate(&acc2, "error from step 2", Some(0), 10);
+
+        let result = agg.into_cycle_result("coding");
+        assert_eq!(
+            result.stderr, "error from step 1\nerror from step 2",
+            "Multiple non-empty stderr should be joined with newline"
+        );
+    }
 }

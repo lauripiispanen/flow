@@ -432,6 +432,22 @@ min_interval = 3
     }
 
     #[test]
+    fn test_d002_no_warning_at_exactly_fifty_percent() {
+        let config = basic_config();
+        let log = vec![
+            make_outcome(1, "coding", "Failed with exit code 1"),
+            make_outcome(2, "coding", "Completed successfully"),
+        ];
+
+        let report = diagnose(&config, &log);
+        let d002 = report.findings.iter().find(|f| f.code == "D002");
+        assert!(
+            d002.is_none(),
+            "Should not warn at exactly 50% (1/2): condition is 'more than half'"
+        );
+    }
+
+    #[test]
     fn test_d002_no_warning_when_mostly_successful() {
         let config = basic_config();
         let log = vec![

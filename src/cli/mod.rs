@@ -7,5 +7,4 @@ pub mod display;
 
 pub use display::render_diagnostic_report;
 pub use display::CycleDisplay;
-pub use display::HealthColor;
 pub use display::StatusLine;

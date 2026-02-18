@@ -1,9 +1,15 @@
 //! Claude Code CLI command builder
 //!
 //! Constructs `std::process::Command` for invoking Claude Code
-//! with the appropriate prompt and permission flags.
+//! with the appropriate prompt and permission flags. Also provides
+//! `run_for_result` to spawn a command and collect the final result text.
 
+use anyhow::{bail, Context, Result};
 use std::process::Command;
+use tokio::io::AsyncBufReadExt;
+use tokio::process::Command as TokioCommand;
+
+use super::stream::{parse_event, StreamAccumulator, StreamEvent};
 
 /// Build a `Command` to invoke Claude Code with the given prompt and permissions.
 ///
@@ -44,6 +50,49 @@ pub fn build_command_with_session(
     }
 
     cmd
+}
+
+/// Spawn a Claude Code command, stream-parse the output, and return the result text.
+///
+/// Used by the cycle selector and step router — both invoke Claude with no tool
+/// permissions and only need the final result text from the response.
+pub async fn run_for_result(cmd: Command) -> Result<String> {
+    let mut child = TokioCommand::from(cmd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("Failed to spawn claude")?;
+
+    let stdout = child.stdout.take().context("No stdout from claude")?;
+    let reader = tokio::io::BufReader::new(stdout);
+    let mut lines = reader.lines();
+    let mut accumulator = StreamAccumulator::new();
+
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .context("Failed to read claude output")?
+    {
+        if let Some(event) = parse_event(&line) {
+            accumulator.process(&event);
+            if matches!(event, StreamEvent::Result { .. }) {
+                break;
+            }
+        }
+    }
+
+    let _ = child.wait().await;
+
+    let result_text = match &accumulator.result {
+        Some(StreamEvent::Result { result_text, .. }) => result_text.clone(),
+        _ => accumulator.text_fragments.join(""),
+    };
+
+    if result_text.is_empty() {
+        bail!("Claude returned empty response");
+    }
+
+    Ok(result_text)
 }
 
 #[cfg(test)]
