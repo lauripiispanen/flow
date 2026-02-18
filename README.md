@@ -13,13 +13,14 @@ Flow is a loop runner for Claude Code. You define named cycles — coding, garde
 - **Multi-Step Cycles**: Break cycles into sequential steps with session affinity — e.g., plan → review → implement in the same conversation
 - **LLM Step Routing**: Steps can use `router = "llm"` for conditional branching (e.g., loop back to planning if review rejects)
 - **Multi-Iteration Loops**: Run many iterations back-to-back with `--max-iterations`
-- **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state
+- **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state, with customizable selection criteria via `[selector]` config
 - **Dependency Triggers**: Cycles can auto-trigger after others (e.g., gardening after coding) with configurable minimum intervals
 - **Additive Permissions**: Global + cycle + per-step permissions merged and passed to Claude Code as `--allowedTools`
 - **Live Status Bar**: Color-coded health display during execution showing turns, cost, elapsed time, and errors
 - **JSONL Logging**: Every cycle outcome is logged to `.flow/log.jsonl` with cost, turns, denials, files changed, tests passed, and timing
 - **Progress Tracking**: `.flow/progress.json` provides real-time run status for external monitoring
 - **Diagnostics**: `flow doctor` analyzes config and log history for permission issues, high costs, and configuration lint
+- **Project Scaffolding**: `flow init` creates a starter `cycles.toml` and `.flow/` directory for new projects
 - **Graceful Shutdown**: Ctrl+C cleanly stops execution, kills child processes, and writes final progress status
 - **Circuit Breakers**: Consecutive tool errors kill runaway cycles; consecutive cycle failures stop the entire run
 
@@ -158,7 +159,7 @@ The `context` field controls how much execution history is injected into cycle p
 |------|----------|
 | `"full"` | Full JSONL log history included |
 | `"summaries"` | Summarized history (recommended for most cycles) |
-| `"none"` | No history context |
+| `"none"` | No history context (default) |
 
 ### Selector customization
 
