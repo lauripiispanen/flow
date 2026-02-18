@@ -192,6 +192,7 @@ after = ["coding", "testing"]
                 circuit_breaker_repeated: 5,
                 max_consecutive_failures: 3,
                 summary_interval: 5,
+                vars: std::collections::HashMap::new(),
             },
             selector: None,
             cycles: vec![],

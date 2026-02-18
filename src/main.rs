@@ -19,6 +19,7 @@ use flow::cycle::config::FlowConfig;
 use flow::cycle::executor::CycleExecutor;
 use flow::cycle::rules::find_triggered_cycles;
 use flow::cycle::selector::select_cycle;
+use flow::cycle::template::build_template_vars;
 use flow::doctor::diagnose;
 use flow::init::init;
 use flow::log::jsonl::JsonlLogger;
@@ -215,6 +216,7 @@ async fn execute_and_log(
     iteration: &mut u32,
     circuit_breaker_threshold: u32,
     iteration_context: Option<(u32, u32)>,
+    template_vars: &std::collections::HashMap<String, String>,
 ) -> Result<flow::CycleResult> {
     // Read log entries for context injection
     let log_entries = logger.read_all().unwrap_or_default();
@@ -225,6 +227,7 @@ async fn execute_and_log(
             circuit_breaker_threshold,
             &log_entries,
             iteration_context,
+            template_vars,
         )
         .await
         .with_context(|| format!("Failed to execute cycle '{cycle_name}'"))?;
@@ -341,6 +344,7 @@ async fn run_dependent_cycles(
     max_denials: u32,
     max_consecutive_failures: u32,
     shutdown: &AtomicBool,
+    base_template_vars: &std::collections::HashMap<String, String>,
 ) -> Result<()> {
     let log_entries = logger
         .read_all()
@@ -355,6 +359,15 @@ async fn run_dependent_cycles(
         progress.current_cycle = dep_cycle.to_string();
         let _ = progress_writer.write(progress);
 
+        // Build template vars for this dependent cycle
+        let mut dep_vars = base_template_vars.clone();
+        dep_vars.insert("cycle_name".to_string(), dep_cycle.to_string());
+        dep_vars.insert("step_name".to_string(), String::new());
+        dep_vars.insert(
+            "iteration".to_string(),
+            progress.current_iteration.to_string(),
+        );
+
         let iter_ctx = Some((progress.current_iteration, progress.max_iterations));
         let dep_result = execute_and_log(
             executor,
@@ -363,6 +376,7 @@ async fn run_dependent_cycles(
             iteration,
             circuit_breaker,
             iter_ctx,
+            &dep_vars,
         )
         .await?;
 
@@ -469,19 +483,11 @@ async fn main() -> Result<()> {
     let mut iteration: u32 = 1;
     let max_iterations = cli.max_iterations;
     let mut run_history: Vec<RunOutcome> = Vec::new();
-    let mut progress = RunProgress {
-        started_at: chrono::Utc::now(),
-        current_iteration: 1,
-        max_iterations,
-        current_cycle: String::new(),
-        current_status: RunStatus::Running,
-        cycles_executed: std::collections::BTreeMap::new(),
-        total_duration_secs: 0,
-        total_cost_usd: 0.0,
-        last_outcome: None,
-    };
+    let mut progress = RunProgress::new(max_iterations);
 
     print_run_banner(max_iterations, fixed_cycle.as_deref(), use_selector);
+
+    let project_dir = std::env::current_dir().unwrap_or_default();
 
     // Main iteration loop
     loop {
@@ -504,6 +510,17 @@ async fn main() -> Result<()> {
         progress.current_cycle = cycle_name.clone();
         let _ = progress_writer.write(&progress);
 
+        // Build template variables for this cycle
+        let template_vars = build_template_vars(
+            &config.global.vars,
+            &project_dir,
+            &cli.todo,
+            &cycle_name,
+            "",
+            iteration,
+            max_iterations,
+        );
+
         // Execute the selected cycle
         let result = execute_and_log(
             &executor,
@@ -512,6 +529,7 @@ async fn main() -> Result<()> {
             &mut iteration,
             circuit_breaker,
             Some((progress.current_iteration, max_iterations)),
+            &template_vars,
         )
         .await?;
 
@@ -546,6 +564,7 @@ async fn main() -> Result<()> {
             max_denials,
             max_consecutive_failures,
             &shutdown,
+            &template_vars,
         )
         .await?;
 

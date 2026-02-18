@@ -48,6 +48,24 @@ pub struct RunProgress {
     pub last_outcome: Option<String>,
 }
 
+impl RunProgress {
+    /// Create a new `RunProgress` for the start of a run.
+    #[must_use]
+    pub fn new(max_iterations: u32) -> Self {
+        Self {
+            started_at: chrono::Utc::now(),
+            current_iteration: 1,
+            max_iterations,
+            current_cycle: String::new(),
+            current_status: RunStatus::Running,
+            cycles_executed: BTreeMap::new(),
+            total_duration_secs: 0,
+            total_cost_usd: 0.0,
+            last_outcome: None,
+        }
+    }
+}
+
 /// Manages reading and writing `.flow/progress.json`
 pub struct ProgressWriter {
     path: PathBuf,

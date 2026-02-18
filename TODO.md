@@ -35,7 +35,7 @@ _(empty — all P0 items are complete)_
 
 ## Phase 3: Advanced Features (future)
 
-- [ ] Template prompts with variables (e.g., `{{todo_file}}`, `{{project_name}}`)
+- [x] Template prompts with variables (e.g., `{{todo_file}}`, `{{project_name}}`)
 - [x] Per-cycle timeout configuration (`max_turns`, `max_cost_usd` on cycles and steps)
 - [ ] Parallel cycle execution (wave-based)
 - [ ] Model profiles (different models for coding/review/planning)

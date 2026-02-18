@@ -8,3 +8,4 @@ pub mod executor;
 pub mod router;
 pub mod rules;
 pub mod selector;
+pub mod template;

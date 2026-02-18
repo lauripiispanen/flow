@@ -27,4 +27,5 @@ pub use cycle::config::{CycleConfig, FlowConfig, GlobalConfig, StepConfig, StepR
 pub use cycle::executor::{CycleExecutor, CycleResult};
 pub use cycle::rules::find_triggered_cycles;
 pub use cycle::selector::select_cycle;
+pub use cycle::template::{build_template_vars, expand_template};
 pub use log::{CycleOutcome, JsonlLogger, ProgressWriter, RunProgress, RunStatus};

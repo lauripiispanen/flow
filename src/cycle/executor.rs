@@ -21,6 +21,7 @@ use crate::cli::{CycleDisplay, StatusLine};
 use crate::cycle::config::FlowConfig;
 use crate::cycle::context::{build_context, inject_context};
 use crate::cycle::router::{determine_next_step, RouteDecision, VisitTracker};
+use crate::cycle::template::expand_template;
 use crate::log::jsonl::CycleOutcome;
 
 /// Prepared cycle ready for execution
@@ -130,6 +131,7 @@ impl CycleExecutor {
         circuit_breaker_threshold: u32,
         log_entries: &[CycleOutcome],
         iteration_context: Option<(u32, u32)>,
+        template_vars: &std::collections::HashMap<String, String>,
     ) -> Result<CycleResult> {
         let cycle = self
             .config
@@ -146,6 +148,7 @@ impl CycleExecutor {
                 log_entries,
                 &display,
                 iteration_context,
+                template_vars,
             )
             .await
         } else {
@@ -155,6 +158,7 @@ impl CycleExecutor {
                 log_entries,
                 &display,
                 iteration_context,
+                template_vars,
             )
             .await
         }
@@ -168,13 +172,15 @@ impl CycleExecutor {
         log_entries: &[CycleOutcome],
         display: &CycleDisplay,
         iteration_context: Option<(u32, u32)>,
+        template_vars: &std::collections::HashMap<String, String>,
     ) -> Result<CycleResult> {
         let cycle = self
             .config
             .get_cycle(cycle_name)
             .with_context(|| format!("Unknown cycle: '{cycle_name}'"))?;
         let (max_turns, max_cost_usd) = resolve_limits(cycle, None);
-        let prepared = self.prepare_with_context(cycle_name, log_entries)?;
+        let mut prepared = self.prepare_with_context(cycle_name, log_entries)?;
+        prepared.prompt = expand_template(&prepared.prompt, template_vars);
         let cmd = build_command_with_options(
             &prepared.prompt,
             &prepared.permissions,
@@ -228,6 +234,7 @@ impl CycleExecutor {
         log_entries: &[CycleOutcome],
         display: &CycleDisplay,
         iteration_context: Option<(u32, u32)>,
+        template_vars: &std::collections::HashMap<String, String>,
     ) -> Result<CycleResult> {
         let cycle = self
             .config
@@ -257,7 +264,11 @@ impl CycleExecutor {
                 Some((c, m)) => StatusLine::with_iteration(&step_label, c, m),
                 None => StatusLine::new(&step_label),
             };
-            let step_prompt = inject_context(&step.prompt, context.clone());
+            // Update step_name for this step's template expansion
+            let mut step_vars = template_vars.clone();
+            step_vars.insert("step_name".to_string(), step.name.clone());
+            let expanded_prompt = expand_template(&step.prompt, &step_vars);
+            let step_prompt = inject_context(&expanded_prompt, context.clone());
             let permissions = resolve_step_permissions(&self.config.global, cycle, step);
             let resume_args = session_mgr.resume_args(step.session.as_deref());
             let (max_turns, max_cost_usd) = resolve_limits(cycle, Some(step));

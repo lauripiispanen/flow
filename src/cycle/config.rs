@@ -2,7 +2,7 @@
 //!
 //! Parses `cycles.toml` into structured cycle definitions.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
@@ -38,6 +38,9 @@ pub struct GlobalConfig {
     /// Print a periodic run summary every N iterations (default: 5, 0 = disabled)
     #[serde(default = "default_summary_interval")]
     pub summary_interval: u32,
+    /// User-defined template variables accessible as `{{key}}` in prompts
+    #[serde(default)]
+    pub vars: HashMap<String, String>,
 }
 
 const fn default_max_permission_denials() -> u32 {
@@ -1581,5 +1584,70 @@ permissions = ["not-valid"]
             msg.contains("in step 'plan'"),
             "Expected step context in error, got: {msg}"
         );
+    }
+
+    // --- global.vars config field tests ---
+
+    #[test]
+    fn test_global_vars_parsed() {
+        let toml = r#"
+[global]
+permissions = []
+
+[global.vars]
+project_name = "flow"
+test_command = "cargo test-all"
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert_eq!(config.global.vars.get("project_name").unwrap(), "flow");
+        assert_eq!(
+            config.global.vars.get("test_command").unwrap(),
+            "cargo test-all"
+        );
+    }
+
+    #[test]
+    fn test_global_vars_default_empty() {
+        let toml = r#"
+[global]
+permissions = []
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert!(config.global.vars.is_empty());
+    }
+
+    #[test]
+    fn test_global_vars_empty_section() {
+        let toml = r#"
+[global]
+permissions = []
+
+[global.vars]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        let config = FlowConfig::parse(toml).unwrap();
+        assert!(config.global.vars.is_empty());
+    }
+
+    #[test]
+    fn test_actual_cycles_toml_parses_with_vars() {
+        // The real cycles.toml should parse whether or not it has [global.vars]
+        let config = FlowConfig::from_path("cycles.toml").expect("cycles.toml must be parseable");
+        // vars is optional — just verify the config parses
+        let _ = &config.global.vars;
     }
 }
