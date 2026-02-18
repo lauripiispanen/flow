@@ -1,29 +1,33 @@
 # Flow
 
-> "The outer loop that turns Claude Code from a single-shot tool into an autonomous development pipeline."
+> The Makefile for AI development — encode your team's development process as code.
 
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Flow is a loop runner for Claude Code. You define named cycles — coding, gardening, review, docs, planning — each with its own prompt and permission set, and Flow executes them as fresh Claude Code invocations. Point it at a `cycles.toml` and a `TODO.md`, run `flow --max-iterations 20`, and it picks the most useful cycle each iteration, spawns Claude Code with scoped permissions, logs the outcome, auto-triggers follow-up cycles, and repeats — autonomous software development in a loop, with guardrails.
+AI coding agents are good at executing tasks. What they lack is judgment about *what type of work to do next*. Left unmanaged, agents drift toward feature work and neglect maintenance, review, documentation, and code quality — the same pattern human teams fall into without process discipline.
 
-## Features
+Flow fixes this. You define your development process in a single `cycles.toml` — what types of work exist, how they're balanced, what permissions each phase gets, what quality gates must pass — and Flow enforces it across autonomous agent sessions. It's the policy layer between a company-level orchestrator that dispatches work and the AI agents that execute it.
 
-- **Named Cycles**: Define purpose-specific cycles (coding, gardening, review, docs, planning) in a single TOML config
-- **Multi-Step Cycles**: Break cycles into sequential steps with session affinity — e.g., plan → plan-review → implement → reflect
-- **LLM Step Routing**: Steps can use `router = "llm"` for conditional branching (e.g., loop back to planning if review rejects)
-- **Multi-Iteration Loops**: Run many iterations back-to-back with `--max-iterations`
-- **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state, with customizable selection criteria via `[selector]` config
-- **Dependency Triggers**: Cycles can auto-trigger after others (e.g., gardening after coding) with configurable minimum intervals
-- **Additive Permissions**: Global + cycle + per-step permissions merged and passed to Claude Code as `--allowedTools`
-- **Live Status Bar**: Color-coded health display during execution showing turns, cost, elapsed time, errors, and iteration progress (`[3/10]`) for multi-iteration runs
-- **JSONL Logging**: Every cycle outcome is logged to `.flow/log.jsonl` with cost, turns, denials, files changed, tests passed, and timing
-- **Progress Tracking**: `.flow/progress.json` provides real-time run status for external monitoring
-- **Diagnostics**: `flow doctor` analyzes config and log history for permission issues, high costs, and configuration lint
-- **Project Scaffolding**: `flow init` creates a starter `cycles.toml` and `.flow/` directory for new projects
-- **Graceful Shutdown**: Ctrl+C cleanly stops execution, kills child processes, and writes final progress status
-- **Periodic Run Summaries**: Configurable summary output every N iterations showing cycle breakdown, success rate, and cost
-- **Circuit Breakers**: Consecutive tool errors kill runaway cycles; consecutive cycle failures stop the entire run
+```
+Company orchestrator (Honk, GitHub Actions, custom)
+  → dispatches work items to repos
+    → Flow (cycles.toml — per-repo development policy)
+      → enforces cycle balance, quality gates, permissions
+        → Claude Code / Agent Teams (execution)
+```
+
+## What Makes Flow Different
+
+**Development methodology as code.** `cycles.toml` is a declarative config that encodes your team's process: plan, implement, review, garden. No other tool treats the methodology itself as a versionable, shareable artifact.
+
+**Investment balance.** The AI cycle selector ensures coding, gardening, review, and planning are balanced according to your configuration — not left to chance. Feature work doesn't crowd out maintenance. Quality work isn't an afterthought.
+
+**Permission scoping per phase.** The architect can read but not edit. The coder can edit `src/` but not CI config. The gardener can update deps but not rewrite features. Permissions are hierarchical and additive — cycles can only add permissions, never remove the baseline.
+
+**Guardrails for unattended operation.** Circuit breakers, denial gates, consecutive failure limits, and per-cycle cost caps make it safe to `flow --max-iterations 50` and walk away. When something goes wrong, Flow stops — it doesn't flail.
+
+**Cross-run observability.** JSONL logs, progress tracking, `flow doctor` diagnostics, and periodic summaries give you a structured view across dozens of iterations. Know what happened, what it cost, and what went wrong — without reading raw transcripts.
 
 ## Quick Start
 
@@ -40,13 +44,13 @@ cd flow
 cargo build --release
 ```
 
-### Initialize a new project
+### Initialize a project
 
 ```bash
 flow init
 ```
 
-This creates a `cycles.toml` with coding and gardening cycles and a `.flow/` directory for logs. Edit `cycles.toml` to customize prompts and permissions for your project.
+This creates a `cycles.toml` with coding and gardening cycles and a `.flow/` directory for logs. Edit `cycles.toml` to define your team's development process.
 
 ### Usage
 
@@ -54,43 +58,39 @@ This creates a `cycles.toml` with coding and gardening cycles and a `.flow/` dir
 # Run a single named cycle
 flow --cycle coding
 
-# Run 10 iterations of the same cycle
-flow --cycle coding --max-iterations 10
-
 # Run 10 iterations with AI-driven cycle selection
 flow --max-iterations 10
 
 # Run diagnostics on config and history
 flow doctor
 
-# Auto-fix permission and min_interval issues
+# Auto-fix permission and config issues
 flow doctor --repair
-
-# Use a custom config path
-flow --cycle coding --config my-cycles.toml
 ```
 
 ### CLI Reference
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--cycle <name>` | — | Cycle to execute (optional — AI selector chooses if omitted) |
+| `--cycle <name>` | — | Cycle to execute (AI selector chooses if omitted) |
 | `--config <path>` | `cycles.toml` | Path to configuration file |
 | `--log-dir <path>` | `.flow` | Directory for log output |
 | `--max-iterations <n>` | `1` | Number of iterations to run |
-| `--todo <path>` | `TODO.md` | Path to TODO.md for AI cycle selector context |
+| `--todo <path>` | `TODO.md` | Path to TODO.md for cycle selector context |
 
 | Subcommand | Description |
 |------------|-------------|
 | `doctor` | Analyze config and log history, report findings by severity |
-| `doctor --repair` | Auto-fix safe issues (D001 missing permissions, D004 missing `min_interval`) |
+| `doctor --repair` | Auto-fix safe issues (missing permissions, missing `min_interval`) |
 | `init` | Scaffold a new project with `cycles.toml` and `.flow/` directory |
 
 ## Configuration
 
-Flow is configured via a TOML file (default: `cycles.toml`).
+Flow is configured via `cycles.toml` — the "Makefile" that encodes your development process.
 
-### Single-step cycle
+### Defining cycles
+
+Each cycle represents a type of work. Together, they describe your complete development methodology.
 
 ```toml
 [global]
@@ -98,30 +98,32 @@ permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Bash(cargo *)"]
 max_permission_denials = 10        # Stop cycle after this many total denials
 circuit_breaker_repeated = 5       # Kill cycle after N consecutive tool errors
 max_consecutive_failures = 3       # Stop run after N cycles in a row fail
-summary_interval = 5               # Print run summary every N iterations (0 = disabled)
+summary_interval = 5               # Print run summary every N iterations
+
+[[cycle]]
+name = "coding"
+description = "Implement features from TODO.md using TDD"
+prompt = "Your coding prompt here..."
+permissions = ["Edit(./TODO.md)", "Bash(git *)"]
 
 [[cycle]]
 name = "gardening"
 description = "Refactoring, cleanup, dependency updates"
-prompt = """
-Your gardening prompt here...
-"""
-permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]   # Added to global permissions
-after = ["coding"]                                      # Auto-triggers after coding
-min_interval = 5                                        # But only if 5+ iterations since last run
-context = "summaries"                                   # Log context: "full", "summaries", or "none"
+prompt = "Your gardening prompt here..."
+permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
+after = ["coding"]                   # Auto-triggers after coding cycles
+min_interval = 5                     # But only if 5+ iterations since last run
+context = "summaries"                # Inject summarized history into prompt
 ```
 
-### Multi-step cycle
+### Multi-step cycles
 
-Cycles can have multiple steps. Steps within the same cycle can share a Claude Code session via session tags.
+Cycles can have multiple sequential steps with session affinity — e.g., plan, review the plan, then implement.
 
 ```toml
 [[cycle]]
 name = "coding"
 description = "Plan, review plan, implement, then reflect"
-after = []
-context = "summaries"
 
 [[cycle.step]]
 name = "plan"
@@ -132,9 +134,9 @@ permissions = ["Edit(./.flow/current-plan.md)"]
 [[cycle.step]]
 name = "plan-review"
 session = "architect"                  # Continues the same conversation
-router = "llm"                         # LLM decides: proceed to implement, or loop back to plan
-max_visits = 2                         # Prevent infinite loops (default: 3)
-prompt = "Review the plan. Write APPROVED or REJECTED to .flow/plan-review.md"
+router = "llm"                         # LLM decides: proceed or loop back
+max_visits = 2                         # Prevent infinite loops
+prompt = "Review the plan. Write APPROVED or REJECTED."
 permissions = ["Edit(./.flow/plan-review.md)"]
 
 [[cycle.step]]
@@ -142,17 +144,20 @@ name = "implement"
 session = "coder"                      # Fresh session for implementation
 prompt = "Read the approved plan. Implement with TDD. Commit when done."
 permissions = ["Edit(./TODO.md)", "Bash(git *)"]
-
-[[cycle.step]]
-name = "reflect"
-session = "coder"                      # Continues the implementation session
-prompt = "Reflect on what went well, what needed guidance, and any action items."
-permissions = ["Edit(./TODO.md)", "Bash(git *)"]
 ```
 
-**Session affinity**: Steps with the same `session` tag continue the same Claude Code conversation (via `--resume`). Different tags or no tag start fresh sessions. Sessions do not persist across iterations.
+**Session affinity**: Steps with the same `session` tag continue the same Claude Code conversation (via `--resume`). Different tags start fresh sessions. Sessions do not persist across iterations.
 
-**Step routing**: By default, steps execute sequentially. Set `router = "llm"` on a step to let an LLM decide the next step after it completes — it can jump to any step or declare the cycle done. Use `max_visits` to cap how many times any step can be visited.
+**Step routing**: By default, steps execute sequentially. Set `router = "llm"` to let an LLM decide the next step — it can jump to any step or declare the cycle done. Use `max_visits` to cap revisits.
+
+### Selector customization
+
+When running without `--cycle`, Flow uses an AI selector to pick the best cycle each iteration. Customize its priorities:
+
+```toml
+[selector]
+prompt = "Prefer coding cycles for TODO items. Only run gardening after 3+ coding cycles."
+```
 
 ### Permission format
 
@@ -161,7 +166,7 @@ Permissions use `ToolName` or `ToolName(specifier)` syntax, matching Claude Code
 - Bare tool: `"Read"`, `"Glob"`, `"Grep"`, `"Edit"`, `"Write"`, `"Bash"`
 - With specifier: `"Edit(./src/**)"`, `"Bash(cargo test *)"`, `"Write(./out.txt)"`
 
-Permissions are **hierarchical and additive**: global + cycle + per-step permissions are merged and deduplicated. Permissions can only be added, never removed.
+Permissions are **hierarchical and additive**: global + cycle + per-step permissions are merged. Permissions can only be added, never removed — a safety property that ensures baseline protections always apply.
 
 ### Context modes
 
@@ -173,47 +178,32 @@ The `context` field controls how much execution history is injected into cycle p
 | `"summaries"` | Summarized history (recommended for most cycles) |
 | `"none"` | No history context (default) |
 
-### Selector customization
-
-When running without `--cycle`, Flow uses an AI selector to pick the best cycle each iteration. You can customize the selector's decision criteria with a `[selector]` section:
-
-```toml
-[selector]
-prompt = "Prefer coding cycles for TODO items. Only run gardening after 3+ coding cycles."
-```
-
-The custom prompt replaces the default selection criteria. When omitted or empty, built-in defaults are used.
-
 ## How It Works
 
 1. **Load config** — parse `cycles.toml`, validate cycles, steps, and permissions
-2. **Select cycle** — either the fixed `--cycle` name, or AI-selected from log history + TODO.md
+2. **Select cycle** — either the fixed `--cycle` name, or AI-selected based on log history, TODO.md state, and configured balance priorities
 3. **Resolve permissions** — merge global + cycle + step-specific, deduplicate
-4. **Execute steps** — for each step: spawn `claude` CLI with prompt, stream-JSON output, and allowed tools; route to next step
-5. **Display** — render live status bar with turn count, cost, elapsed time, and health color
-6. **Log** — append `CycleOutcome` to `.flow/log.jsonl` (includes per-step outcomes, files changed, tests passed)
-7. **Update progress** — write current run state to `.flow/progress.json`
-8. **Gate** — check denial threshold and consecutive failure count; abort if exceeded
-9. **Trigger** — find dependent cycles (via `after` + `min_interval` rules)
-10. **Repeat** — loop back to step 2 until `--max-iterations` reached, circuit breaker trips, or Ctrl+C
+4. **Execute steps** — spawn `claude` CLI with prompt, permissions, and session affinity; route between steps
+5. **Log** — append outcome to `.flow/log.jsonl` (cost, turns, denials, files changed, tests passed)
+6. **Gate** — check denial threshold and consecutive failure count; abort if exceeded
+7. **Trigger** — find dependent cycles (via `after` + `min_interval` rules)
+8. **Repeat** — loop back to step 2 until `--max-iterations` reached or circuit breaker trips
 
 ### Observability
 
-**Log file** (`.flow/log.jsonl`): Append-only JSONL with one entry per cycle execution. Each entry includes iteration number, cycle name, outcome, duration, turn count, cost, permission denials, files changed, tests passed, and optional per-step breakdowns.
+**Log file** (`.flow/log.jsonl`): Append-only JSONL with one entry per cycle. Each entry includes iteration number, cycle name, outcome, duration, turn count, cost, permission denials, files changed, tests passed, and optional per-step breakdowns.
 
-**Progress file** (`.flow/progress.json`): Written during multi-iteration runs. Contains `started_at`, `current_iteration`, `max_iterations`, `current_cycle`, `current_status` (running/completed/failed/stopped), `cycles_executed` counts, `total_duration_secs`, `total_cost_usd`, and `last_outcome`. Deleted on normal completion. External tools can poll this file to monitor run progress.
+**Progress file** (`.flow/progress.json`): Written during multi-iteration runs. Contains run state, current iteration, cycle breakdown, costs. External tools can poll this to monitor progress.
 
-**Periodic summaries**: During multi-iteration runs, Flow prints a compact summary every `summary_interval` iterations (default: 5) showing cycle breakdown, success rate, cumulative cost, and elapsed time.
+**Periodic summaries**: Compact summary every `summary_interval` iterations showing cycle breakdown, success rate, cumulative cost, and elapsed time.
 
-## Diagnostics
-
-`flow doctor` runs analysis and reports findings at three severity levels. Use `flow doctor --repair` to auto-fix safe issues (D001 and D004) by editing `cycles.toml` in-place:
+**Diagnostics** (`flow doctor`):
 
 | Code | Severity | What it checks | `--repair` |
 |------|----------|----------------|------------|
-| D001 | Error | Permission denials in log history (with fix suggestions) | Auto-fix |
+| D001 | Error | Permission denials in log history | Auto-fix |
 | D002 | Warning | Repeated cycle failures (>50% failure rate) | — |
-| D003 | Warning | High-cost runs (>$5 per cycle, aggregated) | — |
+| D003 | Warning | High-cost runs (>$5 per cycle) | — |
 | D004 | Info | Triggered cycles missing `min_interval` | Auto-fix |
 | D005 | Warning | Cycles with no permissions at all | — |
 | D006 | Info | Frequency tuning suggestions | — |
@@ -227,7 +217,6 @@ flow/
 │   ├── lib.rs               # Public library re-exports
 │   ├── init.rs              # flow init scaffolding
 │   ├── doctor.rs            # Diagnostic engine (D001-D006)
-│   ├── testutil.rs          # Shared test helpers
 │   ├── cycle/
 │   │   ├── config.rs        # TOML config parsing and validation
 │   │   ├── executor.rs      # Single-step and multi-step cycle execution
@@ -245,9 +234,7 @@ flow/
 │   └── log/
 │       ├── jsonl.rs         # Append-only JSONL logger
 │       └── progress.rs      # Real-time progress.json writer
-├── tests/
-│   └── integration_test.rs  # End-to-end tests
-├── cycles.toml              # Cycle configuration
+├── cycles.toml              # Development process configuration
 ├── AGENTS.md                # Agent context and architecture index
 └── TODO.md                  # Task queue
 ```
@@ -259,9 +246,6 @@ cargo build                  # Build
 cargo test-all               # Run all tests (lib + main + integration)
 cargo clippy-all             # Lint with strict warnings
 cargo fmt                    # Format
-
-# Quick iteration (lib only)
-cargo test --lib && cargo clippy --lib && cargo fmt
 ```
 
 Custom cargo aliases are defined in `.cargo/config.toml` for `test-all`, `clippy-all`, `check-all`, and `fmt-check`.

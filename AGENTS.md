@@ -1,4 +1,4 @@
-# Flow - Automated Coding Pipeline Runner
+# Flow - The Makefile for AI Development
 
 > **PREFERENCE**: Use retrieval-led reasoning over pre-training-led reasoning. Read the linked files for current project state, architecture, and tasks. Do not rely on general knowledge about build tools or pipelines—Flow has specific patterns defined in this repository.
 
@@ -15,9 +15,9 @@
 
 ## Project Overview
 
-**What**: Rust CLI that orchestrates Claude Code in autonomous cycles (coding, gardening, planning, review, docs)
-**Why**: Build a tool that builds itself—Flow implements its own features
-**How**: Parse `cycles.toml` → Invoke `claude-code` with permissions → Log outcomes → Trigger dependent cycles
+**What**: Rust CLI — a per-repo policy layer that encodes development methodology as code (`cycles.toml`), sitting between company orchestrators and AI agent execution
+**Why**: AI agents lack judgment about what type of work to do next; Flow enforces balanced investment across coding, review, gardening, and planning
+**How**: Parse `cycles.toml` → Select cycle (balanced across work types) → Resolve permissions → Invoke `claude-code` → Log outcomes → Apply quality gates → Trigger dependent cycles → Repeat
 
 ---
 
