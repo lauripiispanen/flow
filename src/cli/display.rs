@@ -765,18 +765,21 @@ mod tests {
                     code: "D001".to_string(),
                     message: "Permission denied for Edit".to_string(),
                     suggestion: Some("Add Edit(./src/**) to permissions".to_string()),
+                    cycle_name: None,
                 },
                 Finding {
                     severity: Severity::Warning,
                     code: "D002".to_string(),
                     message: "Cycle 'coding' failed 3/4 times".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
                 Finding {
                     severity: Severity::Info,
                     code: "D004".to_string(),
                     message: "Consider setting min_interval".to_string(),
                     suggestion: Some("Add min_interval = 3".to_string()),
+                    cycle_name: None,
                 },
             ],
         };
@@ -799,12 +802,14 @@ mod tests {
                     code: "E1".to_string(),
                     message: "err".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
                 Finding {
                     severity: Severity::Warning,
                     code: "W1".to_string(),
                     message: "warn".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
             ],
         };

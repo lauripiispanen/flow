@@ -13,10 +13,11 @@ _(empty — all P0 items are complete)_
 
 ### P1 — Important Phase 2 follow-ups
 
-- [ ] `flow doctor --repair` auto-fix mode
+- [x] `flow doctor --repair` auto-fix mode
   - Priority: P1
-  - Description: Add `--repair` flag to the doctor subcommand. Auto-apply safe, non-destructive fixes: (1) add missing permissions suggested by D001, (2) set `min_interval` on triggered cycles per D004 suggestions. Read cycles.toml, apply fixes, write back, report what changed. Skip anything destructive.
-  - Files: `src/doctor.rs`, `src/main.rs`, `src/cycle/config.rs` (needs a `write_config()` or similar)
+  - Status: Completed
+  - Description: Added `--repair` flag to doctor subcommand. Auto-applies D001 (missing permissions) and D004 (`min_interval`) fixes using `toml_edit` for format-preserving TOML edits. Added `cycle_name` field to `Finding` struct. 13 new tests (10 doctor + 3 CLI).
+  - Files: `src/doctor.rs`, `src/main.rs`, `Cargo.toml`
 
 - [ ] Add `[selector]` section and `[global]` defaults to `cycles.toml`
   - Priority: P1

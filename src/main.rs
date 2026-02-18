@@ -61,7 +61,11 @@ struct Cli {
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 enum Command {
     /// Run diagnostics on your Flow configuration and log history
-    Doctor,
+    Doctor {
+        /// Auto-fix safe, repairable issues (D001 permissions, D004 `min_interval`)
+        #[arg(long)]
+        repair: bool,
+    },
     /// Initialize a new Flow project (creates cycles.toml and .flow/)
     Init,
 }
@@ -447,7 +451,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Command::Doctor) => return run_doctor(&cli),
+        Some(Command::Doctor { repair }) => return run_doctor(&cli, repair),
         Some(Command::Init) => return run_init(),
         None => {}
     }
@@ -580,7 +584,7 @@ fn run_init() -> Result<()> {
 }
 
 /// Run the `flow doctor` diagnostic command.
-fn run_doctor(cli: &Cli) -> Result<()> {
+fn run_doctor(cli: &Cli, repair: bool) -> Result<()> {
     let config = FlowConfig::from_path(&cli.config)
         .with_context(|| format!("Failed to load config from '{}'", cli.config.display()))?;
 
@@ -591,7 +595,20 @@ fn run_doctor(cli: &Cli) -> Result<()> {
     let output = render_diagnostic_report(&report);
     eprintln!("{output}");
 
-    if report.error_count() > 0 {
+    if repair {
+        let actions = flow::doctor::repair(&cli.config, &config, &log_entries)
+            .context("Failed to apply repairs")?;
+        if actions.is_empty() {
+            eprintln!("No auto-fixable issues found.");
+        } else {
+            eprintln!("\nApplied {} repair(s):", actions.len());
+            for action in &actions {
+                eprintln!("  [{}] {}", action.code, action.description);
+            }
+        }
+    }
+
+    if report.error_count() > 0 && !repair {
         std::process::exit(1);
     }
 
@@ -819,8 +836,29 @@ prompt = "Garden"
     #[test]
     fn test_cli_parses_doctor_subcommand() {
         let cli = Cli::try_parse_from(["flow", "doctor"]).unwrap();
-        assert!(matches!(cli.command, Some(Command::Doctor)));
+        assert!(matches!(
+            cli.command,
+            Some(Command::Doctor { repair: false })
+        ));
         assert!(cli.cycle.is_none());
+    }
+
+    #[test]
+    fn test_cli_parses_doctor_repair_flag() {
+        let cli = Cli::try_parse_from(["flow", "doctor", "--repair"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Doctor { repair: true })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_doctor_without_repair() {
+        let cli = Cli::try_parse_from(["flow", "doctor"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Doctor { repair: false })
+        ));
     }
 
     #[test]

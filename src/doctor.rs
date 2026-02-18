@@ -31,6 +31,127 @@ pub struct Finding {
     pub message: String,
     /// Suggested fix (optional)
     pub suggestion: Option<String>,
+    /// Which cycle this finding relates to (if applicable)
+    pub cycle_name: Option<String>,
+}
+
+/// A single repair action applied by `flow doctor --repair`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairAction {
+    /// Diagnostic code that triggered the repair (e.g., "D001")
+    pub code: String,
+    /// Human-readable description of what was fixed
+    pub description: String,
+}
+
+/// Return the machine-applicable permission string for a denied tool name.
+///
+/// Unlike `suggest_permission_fix()` which returns human-friendly alternatives,
+/// this returns a single deterministic permission suitable for `cycles.toml`.
+#[must_use]
+pub fn repair_permission_for(tool_name: &str) -> String {
+    match tool_name {
+        "Edit" => "Edit(./**)".to_string(),
+        "Write" => "Write(./**)".to_string(),
+        "Bash" => "Bash(*)".to_string(),
+        _ => tool_name.to_string(),
+    }
+}
+
+/// Apply safe auto-fixes for repairable diagnostic findings.
+///
+/// Reads the TOML config, applies fixes for D001 (missing permissions) and
+/// D004 (missing `min_interval`), and writes the modified file back.
+/// Returns a list of repairs applied. The file is only written if changes were made.
+pub fn repair(
+    config_path: &std::path::Path,
+    config: &FlowConfig,
+    log: &[CycleOutcome],
+) -> anyhow::Result<Vec<RepairAction>> {
+    use std::io::Write;
+
+    let findings = diagnose(config, log).findings;
+    let raw = std::fs::read_to_string(config_path)?;
+    let mut doc: toml_edit::DocumentMut = raw.parse()?;
+    let mut actions = Vec::new();
+
+    // D001: Add missing permissions
+    for finding in findings.iter().filter(|f| f.code == "D001") {
+        let Some(ref cycle_name) = finding.cycle_name else {
+            continue;
+        };
+
+        // Extract unique denied tool names from the finding's message
+        // The message format is: "Cycle '{name}' had N permission denial(s) in iteration M: Tool1, Tool2"
+        let denied_tools: Vec<&str> = finding
+            .message
+            .rsplit(": ")
+            .next()
+            .map(|s| s.split(", ").collect())
+            .unwrap_or_default();
+
+        if let Some(cycles) = doc["cycle"].as_array_of_tables_mut() {
+            for table in cycles.iter_mut() {
+                if table.get("name").and_then(|v| v.as_str()) != Some(cycle_name) {
+                    continue;
+                }
+
+                // Get or create the permissions array
+                let perms = table
+                    .entry("permissions")
+                    .or_insert_with(|| {
+                        toml_edit::Item::Value(toml_edit::Value::Array(toml_edit::Array::new()))
+                    })
+                    .as_array_mut();
+
+                if let Some(perms_array) = perms {
+                    for tool in &denied_tools {
+                        let perm = repair_permission_for(tool);
+                        let already_exists = perms_array.iter().any(|v| v.as_str() == Some(&perm));
+                        if !already_exists {
+                            perms_array.push(perm.as_str());
+                            actions.push(RepairAction {
+                                code: "D001".to_string(),
+                                description: format!(
+                                    "Added '{perm}' to cycle '{cycle_name}' permissions"
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // D004: Add min_interval to triggered cycles without one
+    for finding in findings.iter().filter(|f| f.code == "D004") {
+        let Some(ref cycle_name) = finding.cycle_name else {
+            continue;
+        };
+
+        if let Some(cycles) = doc["cycle"].as_array_of_tables_mut() {
+            for table in cycles.iter_mut() {
+                if table.get("name").and_then(|v| v.as_str()) != Some(cycle_name) {
+                    continue;
+                }
+                if table.get("min_interval").is_none() {
+                    table.insert("min_interval", toml_edit::value(3));
+                    actions.push(RepairAction {
+                        code: "D004".to_string(),
+                        description: format!("Set min_interval = 3 on cycle '{cycle_name}'"),
+                    });
+                }
+            }
+        }
+    }
+
+    // Only write if changes were made
+    if !actions.is_empty() {
+        let mut file = std::fs::File::create(config_path)?;
+        file.write_all(doc.to_string().as_bytes())?;
+    }
+
+    Ok(actions)
 }
 
 /// Diagnostic report from `flow doctor`
@@ -125,6 +246,7 @@ fn check_permission_denials(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
                         "Add to cycles.toml permissions: {}",
                         suggestions.join(", ")
                     )),
+                    cycle_name: Some(entry.cycle.clone()),
                 });
             }
         }
@@ -148,6 +270,7 @@ fn check_failure_rate(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
                     "Cycle '{cycle_name}' failed {failure_count}/{total} times"
                 ),
                 suggestion: Some("Check cycle prompt and permissions. Run `flow --cycle <name>` manually to debug.".to_string()),
+                cycle_name: Some(cycle_name.to_string()),
             });
         }
     }
@@ -180,6 +303,7 @@ fn check_high_cost(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
                     "Consider breaking the task into smaller subtasks or adding constraints to the prompt."
                         .to_string(),
                 ),
+                cycle_name: Some(cycle_name.to_string()),
             });
         }
     }
@@ -213,6 +337,7 @@ fn check_config_lint(config: &FlowConfig, findings: &mut Vec<Finding>) {
                     "Add `min_interval = 3` to '{}' in cycles.toml to avoid redundant runs",
                     cycle.name
                 )),
+                cycle_name: Some(cycle.name.clone()),
             });
         }
 
@@ -228,6 +353,7 @@ fn check_config_lint(config: &FlowConfig, findings: &mut Vec<Finding>) {
                 suggestion: Some(
                     "Add at least `Read` to global permissions in cycles.toml".to_string(),
                 ),
+                cycle_name: Some(cycle.name.clone()),
             });
         }
     }
@@ -271,6 +397,7 @@ fn check_frequency_tuning(config: &FlowConfig, log: &[CycleOutcome], findings: &
                     "Consider setting `min_interval = 3` for '{}' to space out runs",
                     cycle.name
                 )),
+                cycle_name: Some(cycle.name.clone()),
             });
         }
     }
@@ -323,18 +450,21 @@ min_interval = 3
                     code: "E1".to_string(),
                     message: "error".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
                 Finding {
                     severity: Severity::Warning,
                     code: "W1".to_string(),
                     message: "warning".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
                 Finding {
                     severity: Severity::Info,
                     code: "I1".to_string(),
                     message: "info".to_string(),
                     suggestion: None,
+                    cycle_name: None,
                 },
             ],
         };
@@ -654,6 +784,318 @@ min_interval = 3
             d006.is_none(),
             "Should not suggest frequency tuning when min_interval > 1 is already set"
         );
+    }
+
+    // --- Ordering ---
+
+    // --- cycle_name field ---
+
+    #[test]
+    fn test_d001_finding_includes_cycle_name() {
+        let config = basic_config();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.permission_denials = Some(vec!["Edit".to_string()]);
+
+        let report = diagnose(&config, &[entry]);
+        let d001 = report.findings.iter().find(|f| f.code == "D001").unwrap();
+        assert_eq!(d001.cycle_name.as_deref(), Some("coding"));
+    }
+
+    #[test]
+    fn test_d004_finding_includes_cycle_name() {
+        let config = FlowConfig::parse(
+            r#"
+[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+"#,
+        )
+        .unwrap();
+
+        let report = diagnose(&config, &[]);
+        let d004 = report.findings.iter().find(|f| f.code == "D004").unwrap();
+        assert_eq!(d004.cycle_name.as_deref(), Some("gardening"));
+    }
+
+    // --- repair_permission_for ---
+
+    #[test]
+    fn test_repair_permission_for_known_tools() {
+        assert_eq!(repair_permission_for("Edit"), "Edit(./**)");
+        assert_eq!(repair_permission_for("Write"), "Write(./**)");
+        assert_eq!(repair_permission_for("Bash"), "Bash(*)");
+        assert_eq!(repair_permission_for("Read"), "Read");
+        assert_eq!(repair_permission_for("Glob"), "Glob");
+        assert_eq!(repair_permission_for("Grep"), "Grep");
+        assert_eq!(repair_permission_for("WebFetch"), "WebFetch");
+    }
+
+    // --- repair() ---
+
+    #[test]
+    fn test_repair_d001_adds_missing_permission() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+permissions = []
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.permission_denials = Some(vec!["Edit".to_string()]);
+
+        let actions = repair(&config_path, &config, &[entry]).unwrap();
+        assert!(actions.iter().any(|a| a.code == "D001"));
+
+        // Re-read and verify the permission was added
+        let updated = FlowConfig::from_path(&config_path).unwrap();
+        let coding = updated.get_cycle("coding").unwrap();
+        assert!(
+            coding.permissions.iter().any(|p| p == "Edit(./**)"),
+            "Should have added Edit(.//**) permission: {:?}",
+            coding.permissions
+        );
+    }
+
+    #[test]
+    fn test_repair_d004_adds_min_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let actions = repair(&config_path, &config, &[]).unwrap();
+        assert!(actions.iter().any(|a| a.code == "D004"));
+
+        // Re-read and verify min_interval was set
+        let updated = FlowConfig::from_path(&config_path).unwrap();
+        let gardening = updated.get_cycle("gardening").unwrap();
+        assert_eq!(gardening.min_interval, Some(3));
+    }
+
+    #[test]
+    fn test_repair_preserves_existing_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+permissions = ["Glob"]
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.permission_denials = Some(vec!["Edit".to_string()]);
+
+        let actions = repair(&config_path, &config, &[entry]).unwrap();
+        assert!(!actions.is_empty());
+
+        let updated = FlowConfig::from_path(&config_path).unwrap();
+        let coding = updated.get_cycle("coding").unwrap();
+        assert!(
+            coding.permissions.contains(&"Glob".to_string()),
+            "Original permission should be preserved"
+        );
+        assert!(
+            coding.permissions.contains(&"Edit(./**)".to_string()),
+            "New permission should be added"
+        );
+    }
+
+    #[test]
+    fn test_repair_deduplicates_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+permissions = ["Edit(./**)"]
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.permission_denials = Some(vec!["Edit".to_string()]);
+
+        let actions = repair(&config_path, &config, &[entry]).unwrap();
+        // Should not add a duplicate
+        assert!(
+            actions
+                .iter()
+                .all(|a| !(a.code == "D001" && a.description.contains("Edit(.//**)"))),
+            "Should not add duplicate permission"
+        );
+
+        let updated = FlowConfig::from_path(&config_path).unwrap();
+        let coding = updated.get_cycle("coding").unwrap();
+        let edit_count = coding
+            .permissions
+            .iter()
+            .filter(|p| p.as_str() == "Edit(./**)")
+            .count();
+        assert_eq!(edit_count, 1, "Should not duplicate existing permission");
+    }
+
+    #[test]
+    fn test_repair_no_changes_when_clean() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        let original = r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+"#;
+        std::fs::write(&config_path, original).unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let actions = repair(&config_path, &config, &[]).unwrap();
+        assert!(actions.is_empty(), "Should return empty vec when no issues");
+
+        // File should be unchanged
+        let contents = std::fs::read_to_string(&config_path).unwrap();
+        assert_eq!(contents, original, "File should not be modified");
+    }
+
+    #[test]
+    fn test_repair_preserves_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"# Global configuration
+[global]
+permissions = ["Read"]
+
+# The coding cycle
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+permissions = []
+
+# Auto-triggered gardening
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+after = ["coding"]
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let mut entry = make_outcome(1, "coding", "done");
+        entry.permission_denials = Some(vec!["Edit".to_string()]);
+
+        let _actions = repair(&config_path, &config, &[entry]).unwrap();
+        let contents = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            contents.contains("# Global configuration"),
+            "Should preserve comments"
+        );
+        assert!(
+            contents.contains("# The coding cycle"),
+            "Should preserve comments"
+        );
+        assert!(
+            contents.contains("# Auto-triggered gardening"),
+            "Should preserve comments"
+        );
+    }
+
+    #[test]
+    fn test_repair_d001_multi_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("cycles.toml");
+        std::fs::write(
+            &config_path,
+            r#"[global]
+permissions = ["Read"]
+
+[[cycle]]
+name = "coding"
+description = "Coding"
+prompt = "Code"
+permissions = []
+
+[[cycle]]
+name = "gardening"
+description = "Gardening"
+prompt = "Garden"
+permissions = []
+"#,
+        )
+        .unwrap();
+
+        let config = FlowConfig::from_path(&config_path).unwrap();
+        let mut entry1 = make_outcome(1, "coding", "done");
+        entry1.permission_denials = Some(vec!["Edit".to_string()]);
+        let mut entry2 = make_outcome(2, "gardening", "done");
+        entry2.permission_denials = Some(vec!["Bash".to_string()]);
+
+        let actions = repair(&config_path, &config, &[entry1, entry2]).unwrap();
+        assert!(actions.len() >= 2, "Should repair both cycles");
+
+        let updated = FlowConfig::from_path(&config_path).unwrap();
+        let coding = updated.get_cycle("coding").unwrap();
+        assert!(coding.permissions.contains(&"Edit(./**)".to_string()));
+        let gardening = updated.get_cycle("gardening").unwrap();
+        assert!(gardening.permissions.contains(&"Bash(*)".to_string()));
     }
 
     // --- Ordering ---
