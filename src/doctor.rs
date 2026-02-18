@@ -79,7 +79,8 @@ pub fn diagnose(config: &FlowConfig, log: &[CycleOutcome]) -> DiagnosticReport {
     let mut findings = Vec::new();
 
     check_permission_denials(log, &mut findings);
-    check_cycle_health(log, &mut findings);
+    check_failure_rate(log, &mut findings);
+    check_high_cost(log, &mut findings);
     check_config_lint(config, &mut findings);
     check_frequency_tuning(config, log, &mut findings);
 
@@ -129,20 +130,8 @@ fn check_permission_denials(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
 }
 
 /// D002: Check for cycles that consistently fail
-fn check_cycle_health(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
-    if log.is_empty() {
-        return;
-    }
-
-    // Group outcomes by cycle name
-    let mut cycle_outcomes: std::collections::HashMap<&str, Vec<&CycleOutcome>> =
-        std::collections::HashMap::new();
-    for entry in log {
-        cycle_outcomes
-            .entry(entry.cycle.as_str())
-            .or_default()
-            .push(entry);
-    }
+fn check_failure_rate(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
+    let cycle_outcomes = group_by_cycle(log);
 
     for (cycle_name, outcomes) in &cycle_outcomes {
         let failure_count = outcomes
@@ -162,8 +151,14 @@ fn check_cycle_health(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
                 suggestion: Some("Check cycle prompt and permissions. Run `flow --cycle <name>` manually to debug.".to_string()),
             });
         }
+    }
+}
 
-        // Check for high cost anomalies (> $5 per cycle run)
+/// D003: Check for high cost anomalies (> $5 per cycle run)
+fn check_high_cost(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
+    let cycle_outcomes = group_by_cycle(log);
+
+    for (cycle_name, outcomes) in &cycle_outcomes {
         let high_cost_runs: Vec<_> = outcomes
             .iter()
             .filter_map(|o| o.total_cost_usd.filter(|&c| c > 5.0))
@@ -189,6 +184,19 @@ fn check_cycle_health(log: &[CycleOutcome], findings: &mut Vec<Finding>) {
             });
         }
     }
+}
+
+/// Group log entries by cycle name.
+fn group_by_cycle(log: &[CycleOutcome]) -> std::collections::HashMap<&str, Vec<&CycleOutcome>> {
+    let mut cycle_outcomes: std::collections::HashMap<&str, Vec<&CycleOutcome>> =
+        std::collections::HashMap::new();
+    for entry in log {
+        cycle_outcomes
+            .entry(entry.cycle.as_str())
+            .or_default()
+            .push(entry);
+    }
+    cycle_outcomes
 }
 
 /// D004: Lint the config for common issues

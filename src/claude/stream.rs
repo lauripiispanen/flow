@@ -221,8 +221,6 @@ pub struct StreamAccumulator {
     pub text_fragments: Vec<String>,
     /// Tool names used during the session
     pub tools_used: Vec<String>,
-    /// Tool errors encountered
-    pub tool_errors: Vec<String>,
     /// Final result (populated from Result event)
     pub result: Option<StreamEvent>,
     /// Session ID from `SystemInit` event (used for session affinity in multi-step cycles)
@@ -258,12 +256,6 @@ impl StreamAccumulator {
                         }
                     }
                 }
-            }
-            StreamEvent::ToolResult {
-                is_error: true,
-                content,
-            } => {
-                self.tool_errors.push(content.clone());
             }
             StreamEvent::ToolResult {
                 is_error: false,
@@ -542,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn test_accumulator_collects_tool_errors() {
+    fn test_accumulator_ignores_error_tool_results() {
         let mut acc = StreamAccumulator::new();
         acc.process(&StreamEvent::ToolResult {
             is_error: true,
@@ -552,8 +544,8 @@ mod tests {
             is_error: false,
             content: "success".to_string(),
         });
-        assert_eq!(acc.tool_errors.len(), 1);
-        assert_eq!(acc.tool_errors[0], "permission denied");
+        // Error tool results are not counted for tests_passed
+        assert_eq!(acc.tests_passed, 0);
     }
 
     #[test]

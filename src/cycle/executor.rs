@@ -79,9 +79,11 @@ impl CycleExecutor {
         Self { config, shutdown }
     }
 
-    /// Prepare a cycle for execution.
+    /// Prepare a cycle for execution with an empty log context.
     ///
     /// Validates the cycle exists and resolves effective permissions.
+    /// No historical context is injected into the prompt (equivalent to
+    /// calling `prepare_with_context` with an empty log).
     pub fn prepare(&self, cycle_name: &str) -> Result<PreparedCycle> {
         self.prepare_with_context(cycle_name, &[])
     }
@@ -145,7 +147,7 @@ impl CycleExecutor {
         }
     }
 
-    /// Execute a single-step cycle (existing behavior).
+    /// Execute a single-step cycle.
     async fn execute_single_step(
         &self,
         cycle_name: &str,

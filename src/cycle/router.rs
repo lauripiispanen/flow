@@ -423,6 +423,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_router_response_done_takes_priority_over_step_name_in_fallback() {
+        // When both "DONE" and a step name appear in text (no JSON), DONE wins
+        let response = "The implement step is not needed, we are DONE.";
+        let decision = parse_router_response(response, &["plan", "implement"]).unwrap();
+        assert!(
+            matches!(decision, RouteDecision::Done { .. }),
+            "DONE should take priority over step name in fallback: {decision:?}"
+        );
+    }
+
+    #[test]
     fn test_parse_router_response_invalid_step_in_json() {
         // JSON has valid format but step name doesn't exist in available list
         let response = r#"{"next": "nonexistent", "reason": "test"}"#;
