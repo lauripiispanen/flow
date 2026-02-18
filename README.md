@@ -22,6 +22,7 @@ Flow is a loop runner for Claude Code. You define named cycles — coding, garde
 - **Diagnostics**: `flow doctor` analyzes config and log history for permission issues, high costs, and configuration lint
 - **Project Scaffolding**: `flow init` creates a starter `cycles.toml` and `.flow/` directory for new projects
 - **Graceful Shutdown**: Ctrl+C cleanly stops execution, kills child processes, and writes final progress status
+- **Periodic Run Summaries**: Configurable summary output every N iterations showing cycle breakdown, success rate, and cost
 - **Circuit Breakers**: Consecutive tool errors kill runaway cycles; consecutive cycle failures stop the entire run
 
 ## Quick Start
@@ -93,6 +94,7 @@ permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Bash(cargo *)"]
 max_permission_denials = 10        # Stop cycle after this many total denials
 circuit_breaker_repeated = 5       # Kill cycle after N consecutive tool errors
 max_consecutive_failures = 3       # Stop run after N cycles in a row fail
+summary_interval = 5               # Print run summary every N iterations (0 = disabled)
 
 [[cycle]]
 name = "gardening"
@@ -189,7 +191,9 @@ The custom prompt replaces the default selection criteria. When omitted or empty
 
 **Log file** (`.flow/log.jsonl`): Append-only JSONL with one entry per cycle execution. Each entry includes iteration number, cycle name, outcome, duration, turn count, cost, permission denials, files changed, tests passed, and optional per-step breakdowns.
 
-**Progress file** (`.flow/progress.json`): Written during multi-iteration runs. Contains `started_at`, `current_iteration`, `max_iterations`, `current_cycle`, `current_status` (running/completed/failed/stopped), `cycles_executed` counts, and `total_duration_secs`. Deleted on normal completion. External tools can poll this file to monitor run progress.
+**Progress file** (`.flow/progress.json`): Written during multi-iteration runs. Contains `started_at`, `current_iteration`, `max_iterations`, `current_cycle`, `current_status` (running/completed/failed/stopped), `cycles_executed` counts, `total_duration_secs`, `total_cost_usd`, and `last_outcome`. Deleted on normal completion. External tools can poll this file to monitor run progress.
+
+**Periodic summaries**: During multi-iteration runs, Flow prints a compact summary every `summary_interval` iterations (default: 5) showing cycle breakdown, success rate, cumulative cost, and elapsed time.
 
 ## Diagnostics
 
