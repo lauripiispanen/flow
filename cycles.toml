@@ -86,7 +86,7 @@ You are Flow's gardening cycle. Follow the /gardening skill workflow.
 """
 permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
 after = ["coding"]
-min_interval = 5
+min_interval = 25
 context = "summaries"
 
 [[cycle]]

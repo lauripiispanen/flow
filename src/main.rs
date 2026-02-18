@@ -197,7 +197,7 @@ fn update_progress_after_cycle(
         .entry(cycle_name.to_string())
         .or_insert(0) += 1;
     progress.total_duration_secs += result.duration_secs;
-    progress.last_outcome = result.result_text.clone();
+    progress.last_outcome.clone_from(&result.result_text);
 }
 
 /// Execute a cycle with rich display and log the result. Returns the `CycleResult`.

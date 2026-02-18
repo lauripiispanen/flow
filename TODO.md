@@ -68,6 +68,27 @@
 - [ ] Periodic summary output (every N iterations)
   - Priority: P1
 
+### Signal Handling
+- [ ] Handle ctrl+c (SIGINT) gracefully during run
+  - Priority: P0
+  - Description: Ctrl+c doesn't work when flow is running. Need to install a signal handler that cleanly terminates the current Claude Code subprocess and exits.
+
+### Status Bar
+- [ ] Show cycle count in status bar
+  - Priority: P1
+  - Description: Display how many cycles have been executed in the current session (e.g. "Iteration 3/10 | Cycles: coding×2, gardening×1"). Helps the user understand run progress at a glance.
+
+### Gardening Frequency
+- [x] Investigate/tune gardening running too frequently
+  - Priority: P1
+  - Completed: 2026-02-18
+  - Description: Root cause: `after = ["coding"]` auto-trigger + AI selector both choosing gardening with only `min_interval = 5`. Fixed by raising `min_interval` to 25 in cycles.toml. Selector-side gating still a future improvement.
+
+### AI Selector Improvements
+- [ ] Replace `--todo` with a selector prompt in cycles.toml
+  - Priority: P1
+  - Description: The `--todo` flag that passes a TODO.md path is an antipattern — it couples the selector to a specific file convention and requires a CLI arg. Instead, the selector's guidance should be configured in `cycles.toml` (e.g. a `[selector]` section with a prompt field like `prompt = "Read TODO.md for priorities. Focus on P0 tasks first."`). This keeps all orchestration config in one place. The selector also needs richer context to make good decisions: (1) a log/summary of what's been done previously (recent cycle outcomes, not just counts), (2) the full cycle config (names, descriptions, step structure) so it understands what each cycle actually does and can make informed routing decisions.
+
 ### Commands
 - [ ] `flow doctor --repair` auto-fix mode
   - Priority: P1
