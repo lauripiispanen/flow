@@ -24,8 +24,6 @@ pub fn find_triggered_cycles<'a>(
     completed_cycle: &str,
     log: &[CycleOutcome],
 ) -> Vec<&'a str> {
-    let current_iteration = u32::try_from(log.len()).unwrap_or(u32::MAX);
-
     config
         .cycles
         .iter()
@@ -34,12 +32,13 @@ pub fn find_triggered_cycles<'a>(
             let Some(min_interval) = c.min_interval else {
                 return true; // No constraint — always trigger
             };
-            // Find the most recent log entry for this cycle
+            // Count how many log entries ago this cycle last ran.
+            // This is immune to iteration-number resets across runs
+            // because it only looks at position in the append-only log.
             log.iter()
                 .rev()
-                .find(|entry| entry.cycle == c.name)
-                .map(|entry| entry.iteration)
-                .is_none_or(|last| current_iteration.saturating_sub(last) >= min_interval)
+                .position(|entry| entry.cycle == c.name)
+                .is_none_or(|d| u32::try_from(d).unwrap_or(u32::MAX) >= min_interval)
         })
         .map(|c| c.name.as_str())
         .collect()
@@ -219,10 +218,16 @@ after = []
     }
 
     // --- Frequency constraint tests ---
+    //
+    // min_interval is measured as the number of log entries between the
+    // most recent occurrence of the cycle and the end of the log
+    // (i.e. distance-from-end).  This is immune to iteration-number
+    // resets across runs.
 
-    #[test]
-    fn test_min_interval_blocks_trigger_when_too_recent() {
-        let toml = r#"
+    fn gardening_after_coding_config(min_interval: Option<u32>) -> FlowConfig {
+        let interval_line = min_interval.map_or(String::new(), |n| format!("min_interval = {n}"));
+        FlowConfig::parse(&format!(
+            r#"
 [global]
 permissions = []
 
@@ -236,75 +241,39 @@ name = "gardening"
 description = "Gardening"
 prompt = "Garden"
 after = ["coding"]
-min_interval = 3
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // Log: coding ran at iteration 1, gardening ran at iteration 2
-        let log = vec![make_log_entry(1, "coding"), make_log_entry(2, "gardening")];
-
-        // Only 0 iterations since gardening last ran (log.len()=2, last=2, 2-2=0 < 3)
-        let triggered = find_triggered_cycles(&config, "coding", &log);
-        assert!(
-            triggered.is_empty(),
-            "gardening should be blocked by min_interval"
-        );
+{interval_line}
+"#
+        ))
+        .unwrap()
     }
 
     #[test]
-    fn test_min_interval_allows_trigger_when_enough_elapsed() {
-        let toml = r#"
-[global]
-permissions = []
+    fn test_min_interval_blocks_when_too_recent() {
+        let config = gardening_after_coding_config(Some(3));
+        // Gardening is 0 entries from the end → distance 0 < 3
+        let log = vec![make_log_entry(1, "coding"), make_log_entry(2, "gardening")];
+        let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert!(triggered.is_empty());
+    }
 
-[[cycle]]
-name = "coding"
-description = "Coding"
-prompt = "Code"
-
-[[cycle]]
-name = "gardening"
-description = "Gardening"
-prompt = "Garden"
-after = ["coding"]
-min_interval = 3
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // Log: gardening ran at iteration 1, then 3 more coding iterations (2,3,4)
+    #[test]
+    fn test_min_interval_allows_when_enough_elapsed() {
+        let config = gardening_after_coding_config(Some(3));
+        // Gardening is 3 entries from the end → distance 3 >= 3
         let log = vec![
             make_log_entry(1, "gardening"),
             make_log_entry(2, "coding"),
             make_log_entry(3, "coding"),
             make_log_entry(4, "coding"),
         ];
-
-        // 4 iterations total, gardening last at 1, 4-1=3 >= 3
         let triggered = find_triggered_cycles(&config, "coding", &log);
         assert_eq!(triggered, vec!["gardening"]);
     }
 
     #[test]
-    fn test_min_interval_allows_trigger_when_never_ran() {
-        let toml = r#"
-[global]
-permissions = []
-
-[[cycle]]
-name = "coding"
-description = "Coding"
-prompt = "Code"
-
-[[cycle]]
-name = "gardening"
-description = "Gardening"
-prompt = "Garden"
-after = ["coding"]
-min_interval = 5
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // Gardening never ran — should trigger regardless of min_interval
+    fn test_min_interval_allows_when_never_ran() {
+        let config = gardening_after_coding_config(Some(5));
+        // Gardening never ran — always triggers
         let log = vec![make_log_entry(1, "coding")];
         let triggered = find_triggered_cycles(&config, "coding", &log);
         assert_eq!(triggered, vec!["gardening"]);
@@ -312,24 +281,8 @@ min_interval = 5
 
     #[test]
     fn test_no_min_interval_always_triggers() {
-        let toml = r#"
-[global]
-permissions = []
-
-[[cycle]]
-name = "coding"
-description = "Coding"
-prompt = "Code"
-
-[[cycle]]
-name = "gardening"
-description = "Gardening"
-prompt = "Garden"
-after = ["coding"]
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // Gardening just ran, but has no min_interval — should still trigger
+        let config = gardening_after_coding_config(None);
+        // No constraint — triggers even if gardening is the most recent entry
         let log = vec![make_log_entry(1, "coding"), make_log_entry(2, "gardening")];
         let triggered = find_triggered_cycles(&config, "coding", &log);
         assert_eq!(triggered, vec!["gardening"]);
@@ -337,25 +290,8 @@ after = ["coding"]
 
     #[test]
     fn test_min_interval_zero_always_triggers() {
-        let toml = r#"
-[global]
-permissions = []
-
-[[cycle]]
-name = "coding"
-description = "Coding"
-prompt = "Code"
-
-[[cycle]]
-name = "gardening"
-description = "Gardening"
-prompt = "Garden"
-after = ["coding"]
-min_interval = 0
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // min_interval=0 means always eligible
+        let config = gardening_after_coding_config(Some(0));
+        // distance 0 >= 0
         let log = vec![make_log_entry(1, "coding"), make_log_entry(2, "gardening")];
         let triggered = find_triggered_cycles(&config, "coding", &log);
         assert_eq!(triggered, vec!["gardening"]);
@@ -363,32 +299,116 @@ min_interval = 0
 
     #[test]
     fn test_min_interval_boundary_exact_match() {
-        let toml = r#"
-[global]
-permissions = []
-
-[[cycle]]
-name = "coding"
-description = "Coding"
-prompt = "Code"
-
-[[cycle]]
-name = "gardening"
-description = "Gardening"
-prompt = "Garden"
-after = ["coding"]
-min_interval = 2
-"#;
-        let config = FlowConfig::parse(toml).unwrap();
-
-        // Gardening ran at iteration 1, now at iteration 3 (log.len()=3)
-        // 3 - 1 = 2, which equals min_interval — should trigger
+        let config = gardening_after_coding_config(Some(2));
+        // Gardening is 2 entries from the end → distance 2 >= 2
         let log = vec![
             make_log_entry(1, "gardening"),
             make_log_entry(2, "coding"),
             make_log_entry(3, "coding"),
         ];
         let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert_eq!(triggered, vec!["gardening"]);
+    }
+
+    #[test]
+    fn test_min_interval_boundary_one_short() {
+        let config = gardening_after_coding_config(Some(3));
+        // Gardening is 2 entries from the end → distance 2 < 3
+        let log = vec![
+            make_log_entry(1, "gardening"),
+            make_log_entry(2, "coding"),
+            make_log_entry(3, "coding"),
+        ];
+        let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert!(triggered.is_empty());
+    }
+
+    #[test]
+    fn test_min_interval_cross_run_not_fooled_by_old_entries() {
+        // Regression: the log accumulates entries across runs.
+        // min_interval must measure distance from the END of the log,
+        // not compare iteration numbers (which reset per run).
+        let config = gardening_after_coding_config(Some(5));
+
+        // Previous run: 10 entries. New run: gardening at position -2, coding at -1.
+        // Distance from end to last gardening = 1 < 5 → blocked.
+        let log = vec![
+            // --- previous run ---
+            make_log_entry(1, "coding"),
+            make_log_entry(2, "coding"),
+            make_log_entry(3, "coding"),
+            make_log_entry(4, "coding"),
+            make_log_entry(5, "coding"),
+            make_log_entry(6, "coding"),
+            make_log_entry(7, "coding"),
+            make_log_entry(8, "gardening"),
+            make_log_entry(9, "coding"),
+            make_log_entry(10, "coding"),
+            // --- new run (iterations reset) ---
+            make_log_entry(1, "coding"),
+            make_log_entry(2, "gardening"),
+            make_log_entry(3, "coding"),
+        ];
+
+        let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert!(
+            triggered.is_empty(),
+            "gardening should be blocked: only 1 entry since last run, need 5"
+        );
+    }
+
+    #[test]
+    fn test_min_interval_cross_run_allows_after_enough_entries() {
+        // Same cross-run scenario but enough entries have passed.
+        let config = gardening_after_coding_config(Some(3));
+
+        let log = vec![
+            // --- previous run ---
+            make_log_entry(1, "coding"),
+            make_log_entry(2, "gardening"),
+            make_log_entry(3, "coding"),
+            // --- new run ---
+            make_log_entry(1, "coding"),
+            make_log_entry(2, "coding"),
+            make_log_entry(3, "coding"),
+        ];
+
+        // Gardening is 4 entries from the end → distance 4 >= 3 → triggers
+        let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert_eq!(triggered, vec!["gardening"]);
+    }
+
+    #[test]
+    fn test_min_interval_only_considers_most_recent_occurrence() {
+        let config = gardening_after_coding_config(Some(3));
+
+        // Gardening ran twice: at positions 0 and 3 (from end: 5 and 2).
+        // Most recent is at distance 2 < 3 → blocked.
+        let log = vec![
+            make_log_entry(1, "gardening"),
+            make_log_entry(2, "coding"),
+            make_log_entry(3, "coding"),
+            make_log_entry(4, "gardening"),
+            make_log_entry(5, "coding"),
+            make_log_entry(6, "coding"),
+        ];
+
+        let triggered = find_triggered_cycles(&config, "coding", &log);
+        assert!(triggered.is_empty());
+    }
+
+    #[test]
+    fn test_empty_log_triggers_when_no_min_interval() {
+        let config = gardening_after_coding_config(None);
+        let triggered = find_triggered_cycles(&config, "coding", &[]);
+        assert_eq!(triggered, vec!["gardening"]);
+    }
+
+    #[test]
+    fn test_empty_log_triggers_with_min_interval() {
+        let config = gardening_after_coding_config(Some(10));
+        // Never ran → always triggers
+        let triggered = find_triggered_cycles(&config, "coding", &[]);
         assert_eq!(triggered, vec!["gardening"]);
     }
 }

@@ -7,6 +7,15 @@
 [global]
 permissions = ["Read", "Glob", "Grep", "Edit(./src/**)", "Edit(./tests/**)", "Bash(cargo *)"]
 
+[selector]
+prompt = """
+Strongly prefer coding when P0 or P1 tasks remain in TODO.md.
+Gardening and docs are handled automatically via after-triggers — do NOT select them manually.
+Select planning only when TODO.md needs re-prioritization or a new plan is needed.
+Select review only when recent coding iterations had failures or permission denials.
+When in doubt, select coding.
+"""
+
 [[cycle]]
 name = "coding"
 description = "Plan, review plan, then implement with TDD -- three-step cycle with session affinity"
