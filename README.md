@@ -10,7 +10,7 @@ Flow is a loop runner for Claude Code. You define named cycles — coding, garde
 ## Features
 
 - **Named Cycles**: Define purpose-specific cycles (coding, gardening, review, docs, planning) in a single TOML config
-- **Multi-Step Cycles**: Break cycles into sequential steps with session affinity — e.g., plan → review → implement in the same conversation
+- **Multi-Step Cycles**: Break cycles into sequential steps with session affinity — e.g., plan → plan-review → implement → reflect
 - **LLM Step Routing**: Steps can use `router = "llm"` for conditional branching (e.g., loop back to planning if review rejects)
 - **Multi-Iteration Loops**: Run many iterations back-to-back with `--max-iterations`
 - **AI Cycle Selection**: When no fixed cycle is specified, an AI selector picks the best cycle each iteration based on log history and TODO.md state, with customizable selection criteria via `[selector]` config
@@ -63,6 +63,9 @@ flow --max-iterations 10
 # Run diagnostics on config and history
 flow doctor
 
+# Auto-fix permission and min_interval issues
+flow doctor --repair
+
 # Use a custom config path
 flow --cycle coding --config my-cycles.toml
 ```
@@ -80,6 +83,7 @@ flow --cycle coding --config my-cycles.toml
 | Subcommand | Description |
 |------------|-------------|
 | `doctor` | Analyze config and log history, report findings by severity |
+| `doctor --repair` | Auto-fix safe issues (D001 missing permissions, D004 missing `min_interval`) |
 | `init` | Scaffold a new project with `cycles.toml` and `.flow/` directory |
 
 ## Configuration
@@ -115,7 +119,7 @@ Cycles can have multiple steps. Steps within the same cycle can share a Claude C
 ```toml
 [[cycle]]
 name = "coding"
-description = "Plan, review plan, then implement"
+description = "Plan, review plan, implement, then reflect"
 after = []
 context = "summaries"
 
@@ -137,6 +141,12 @@ permissions = ["Edit(./.flow/plan-review.md)"]
 name = "implement"
 session = "coder"                      # Fresh session for implementation
 prompt = "Read the approved plan. Implement with TDD. Commit when done."
+permissions = ["Edit(./TODO.md)", "Bash(git *)"]
+
+[[cycle.step]]
+name = "reflect"
+session = "coder"                      # Continues the implementation session
+prompt = "Reflect on what went well, what needed guidance, and any action items."
 permissions = ["Edit(./TODO.md)", "Bash(git *)"]
 ```
 
@@ -197,16 +207,16 @@ The custom prompt replaces the default selection criteria. When omitted or empty
 
 ## Diagnostics
 
-`flow doctor` runs read-only analysis and reports findings at three severity levels:
+`flow doctor` runs analysis and reports findings at three severity levels. Use `flow doctor --repair` to auto-fix safe issues (D001 and D004) by editing `cycles.toml` in-place:
 
-| Code | Severity | What it checks |
-|------|----------|----------------|
-| D001 | Error | Permission denials in log history (with fix suggestions) |
-| D002 | Warning | Repeated cycle failures (>50% failure rate) |
-| D003 | Warning | High-cost runs (>$5 per cycle, aggregated) |
-| D004 | Info | Triggered cycles missing `min_interval` |
-| D005 | Warning | Cycles with no permissions at all |
-| D006 | Info | Frequency tuning suggestions |
+| Code | Severity | What it checks | `--repair` |
+|------|----------|----------------|------------|
+| D001 | Error | Permission denials in log history (with fix suggestions) | Auto-fix |
+| D002 | Warning | Repeated cycle failures (>50% failure rate) | — |
+| D003 | Warning | High-cost runs (>$5 per cycle, aggregated) | — |
+| D004 | Info | Triggered cycles missing `min_interval` | Auto-fix |
+| D005 | Warning | Cycles with no permissions at all | — |
+| D006 | Info | Frequency tuning suggestions | — |
 
 ## Project Structure
 
