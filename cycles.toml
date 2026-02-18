@@ -39,6 +39,8 @@ permissions = ["Edit(./.flow/current-plan.md)"]
 [[cycle.step]]
 name = "plan-review"
 session = "architect"
+router = "llm"
+max_visits = 2
 prompt = """
 You are the architect reviewing your own implementation plan.
 
@@ -48,13 +50,13 @@ You are the architect reviewing your own implementation plan.
    - Is the plan complete and unambiguous?
    - Are the TDD steps clear?
    - Are there any risks or gaps?
-3. If the plan is APPROVED: write "APPROVED" and a brief rationale to .flow/plan-review.md and exit normally.
-4. If the plan needs revision: write "REJECTED" with specific issues to .flow/plan-review.md,
-   then run: Bash(exit 1) -- this will stop the cycle so you can retry with a better plan.
+3. If the plan is APPROVED: write "APPROVED" and a brief rationale to .flow/plan-review.md.
+4. If the plan needs revision: write "REJECTED" with specific issues to .flow/plan-review.md.
+   The router will send you back to the plan step to revise.
 
 Be rigorous. A bad plan leads to wasted implementation effort.
 """
-permissions = ["Edit(./.flow/plan-review.md)", "Bash(exit *)"]
+permissions = ["Edit(./.flow/plan-review.md)"]
 
 [[cycle.step]]
 name = "implement"
@@ -84,8 +86,8 @@ You are Flow's gardening cycle. Follow the /gardening skill workflow.
 """
 permissions = ["Edit(./Cargo.toml)", "Bash(git *)"]
 after = ["coding"]
-min_interval = 3
-context = "none"
+min_interval = 5
+context = "summaries"
 
 [[cycle]]
 name = "review"
@@ -96,6 +98,30 @@ You are Flow's review cycle. Follow the /review skill workflow.
 permissions = []
 after = []
 min_interval = 2
+context = "summaries"
+
+[[cycle]]
+name = "docs"
+description = "Update user-facing documentation to reflect current features and architecture"
+prompt = """
+You are Flow's documentation cycle.
+
+Your job: keep user-facing docs accurate and up-to-date with the codebase.
+
+1. Read AGENTS.md, TODO.md, and COMPLETED.md to understand current project state.
+2. Read existing docs (README.md, docs/*.md) to find gaps or stale content.
+3. Read relevant source files to verify technical details.
+4. Update documentation:
+   - README.md: ensure it reflects current features, usage, and architecture
+   - docs/*.md: create or update topic-specific docs (setup, configuration, cycle types, etc.)
+5. Keep docs concise and practical. Focus on what users need to know, not internals.
+
+Do NOT edit source code, AGENTS.md, TODO.md, or plan files.
+Commit your changes when done.
+"""
+permissions = ["Edit(./README.md)", "Edit(./docs/**)", "Bash(git *)"]
+after = ["coding"]
+min_interval = 3
 context = "summaries"
 
 [[cycle]]
