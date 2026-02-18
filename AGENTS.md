@@ -9,11 +9,11 @@
 **Orient → Setup → Pick Task → Implement**
 
 1. Read this file (3 min) → [TODO.md](./TODO.md) (2 min) → [plans/002-full-architecture.md](./plans/002-full-architecture.md) (5 min)
-2. Run: `cargo build && cargo test-all` (verify setup — expect 124 passing tests)
-3. Pick task from [TODO.md](./TODO.md) Phase 2 section
+2. Run: `cargo build && cargo test-all` (verify setup — expect 355 passing tests)
+3. Pick task from [TODO.md](./TODO.md)
 4. Follow TDD: Write tests → Implement → Refactor
 
-**Suggested First Tasks**: Iteration context (wire context modes) | `flow init` (project scaffolding) | Multi-step cycles (session affinity)
+**Suggested First Tasks**: Selector config section | Periodic summary output | Status bar iteration progress
 
 ---
 
@@ -39,20 +39,27 @@ cycles.toml: [global.permissions | [[cycle]]: name|prompt|permissions|after|cont
 ```
 
 **Components** → Files:
-- Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML
-- Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle)
-- Executor → `src/cycle/executor.rs` | Build claude-code CLI command with --allowedTools flags
-- CLI builder → `src/claude/cli.rs` | Construct subprocess invocation
-- Stream parser → `src/claude/stream.rs` | Parse stream-JSON, extract results
-- Display → `src/cli/display.rs` | Rich colored terminal output
-- JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl
-- Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents
-- CLI interface → `src/main.rs` | Clap arg parsing, --cycle <name>
+- Config parsing → `src/cycle/config.rs` | Parse cycles.toml TOML (CycleConfig, StepConfig, GlobalConfig)
+- Permissions → `src/claude/permissions.rs` | Hierarchical additive merge (global+cycle+step)
+- Executor → `src/cycle/executor.rs` | Single-step + multi-step cycle execution with display
+- CLI builder → `src/claude/cli.rs` | Construct subprocess invocation with session resume
+- Stream parser → `src/claude/stream.rs` | Parse stream-JSON, extract results/files/tests
+- Session mgr → `src/claude/session.rs` | Session tag→ID mapping for step affinity
+- Display → `src/cli/display.rs` | Rich terminal output, status bar, doctor report
+- JSONL logger → `src/log/jsonl.rs` | Append-only .flow/log.jsonl with step outcomes
+- Progress → `src/log/progress.rs` | Atomic .flow/progress.json writer for run monitoring
+- Rules engine → `src/cycle/rules.rs` | Parse "after: [cycles]", trigger dependents with frequency
+- Selector → `src/cycle/selector.rs` | AI-driven cycle selection from log context + priorities
+- Router → `src/cycle/router.rs` | Step-level routing (sequential or LLM-driven)
+- Context → `src/cycle/context.rs` | Iteration context injection (full/summaries/none)
+- Doctor → `src/doctor.rs` | Diagnostic engine (D001–D006)
+- Init → `src/init.rs` | `flow init` project scaffolding
+- CLI interface → `src/main.rs` | Clap (subcommands: run, init, doctor), execution loop
 
 **Phases**:
-- P1 (MVP): ✅ Manual single-step cycles `flow --cycle coding` | Dogfooded twice | TDD implementation
-- P2 (Auto): Status bar | `flow doctor` | Multi-iteration runs `flow --max-iterations 20` | `flow init` | `flow plan` (quick + interactive) | AI cycle selection | Multi-step cycles
-- P3 (Advanced): Templates | Timeouts | Cost tracking | Parallel (wave-based) cycles | Model profiles | State file | Pause/resume | Gap closure loops | Interactive `flow init` (project-aware scaffolding)
+- P1 (MVP): ✅ Complete — manual single-step cycles, dogfooded twice
+- P2 (Auto): ✅ Mostly complete — status bar, doctor, multi-iteration, init, AI selector, multi-step cycles, step routing, context modes, SIGINT handling, progress.json, files_changed/tests_passed tracking. Remaining: selector config, periodic summaries, doctor --repair, flow plan
+- P3 (Advanced): Templates | Timeouts | Parallel cycles | Model profiles | State file | Pause/resume | Gap closure loops | Interactive init
 
 **Full architecture**: [plans/002-full-architecture.md](./plans/002-full-architecture.md)
 **Multi-step cycles plan**: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
@@ -72,36 +79,38 @@ Flow uses a strict 4-level hierarchy. Use these terms consistently in code, conf
 
 **Session affinity**: Steps within the same cycle execution can share a Claude Code session via session tags. Same tag = continued session. Different tag = fresh session. Sessions do not persist across iterations.
 
-**Current state**: All existing cycles are single-step (one prompt = one step = one cycle). Multi-step cycles are planned for Phase 2. See [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md).
+**Current state**: The coding cycle is multi-step (plan → plan-review → implement). All other cycles are single-step. The plan-review step uses LLM routing (`router = "llm"`) to loop back to the plan step on rejection.
 
 ---
 
 ## Current Status
 
-**Completed**: Project setup | Cargo config | Docs structure | Planning | JSONL Logger | Cycle Config Parser | Permission Resolver | Claude CLI Builder | Cycle Executor | Cycle Rules Engine | CLI Interface | cycles.toml | Auto-trigger | First Dogfood | Integration Tests | Stream-JSON Parser | Rich CLI Display | Runtime Safeguards | Permission Validation | Second Dogfood | Multi-Step Cycles (session affinity, step executor, per-step permissions)
-**In Progress**: Phase 2 (multi-step cycle plan+review steps, flow init, flow plan)
-**Next**: Add plan+plan-review steps to coding cycle → LLM-driven step routing → flow init
+**Completed**: Phase 1 (MVP) | Phase 2 core: status bar, doctor (D001–D006), multi-iteration, AI selector, multi-step cycles (session affinity, per-step perms, step routing), context modes, SIGINT handling, progress.json, files_changed/tests_passed, cumulative health tracking, flow init, coding plan+review steps
+**In Progress**: Phase 2 wrap-up (selector config, periodic summaries, doctor --repair)
+**Next**: `[selector]` config section → enrich selector context → periodic summary output
 
 **Test Status**:
-- ✅ 270 passing (249 lib + 15 main + 6 integration)
+- ✅ 355 passing (325 lib + 24 main + 6 integration)
 
-**Component Status**:
+**Component Status** (all ✅):
 ```
-Cycle Config Parser    | ✅ | src/cycle/config.rs (41 tests: +8 multi-step, StepConfig, is_multi_step)
-Permission Resolver    | ✅ | src/claude/permissions.rs (7 tests + resolve_step_permissions)
-Session Manager        | ✅ | src/claude/session.rs (9 tests, tag→ID mapping, --resume args)
-Cycle Executor         | ✅ | src/cycle/executor.rs (25 tests, single+multi-step execution)
-Claude CLI Builder     | ✅ | src/claude/cli.rs (10 tests, build_command_with_session)
-Stream-JSON Parser    | ✅ | src/claude/stream.rs (26 tests, captures session_id in accumulator)
-Rich CLI Display      | ✅ | src/cli/display.rs (28 tests, includes status bar + health colors + doctor display)
-JSONL Logger          | ✅ | src/log/jsonl.rs (15 tests, StepOutcome + CycleOutcome.steps)
-Cycle Rules Engine    | ✅ | src/cycle/rules.rs (8 tests + 6 frequency)
-Cycle Selector        | ✅ | src/cycle/selector.rs (27 tests, AI-driven cycle selection)
-Doctor Diagnostics    | ✅ | src/doctor.rs (14 tests)
-CLI Interface         | ✅ | src/main.rs (15 tests, rich display + safeguards + doctor + max-iterations + selector)
-cycles.toml           | ✅ | cycles.toml (coding + gardening + review + planning)
-Integration Tests     | ✅ | tests/integration_test.rs (6 tests)
-Runtime Safeguards    | ✅ | circuit breaker + between-cycle gate
+config.rs         | 47 tests | CycleConfig, StepConfig, GlobalConfig, StepRouter, validation
+permissions.rs    | 7 tests  | 3-layer additive merge (global+cycle+step)
+session.rs        | 9 tests  | Session tag→ID mapping, --resume args
+executor.rs       | 28 tests | Single+multi-step execution, StepAggregator, shutdown
+cli.rs            | 12 tests | Command builder with session resume
+stream.rs         | 35 tests | Stream-JSON parser, files_changed, tests_passed, session_id
+display.rs        | 28 tests | CycleDisplay, StatusLine, HealthColor, doctor report
+jsonl.rs          | 18 tests | CRUD, StepOutcome, CycleOutcome.steps, permission_denials
+progress.rs       | 11 tests | RunProgress, RunStatus, atomic writes
+rules.rs          | 14 tests | Dependency triggers + frequency constraints
+selector.rs       | 27 tests | AI-driven cycle selection
+router.rs         | 22 tests | Sequential + LLM step routing, VisitTracker
+context.rs        | tests    | Iteration context injection (full/summaries/none)
+doctor.rs         | 18 tests | D001–D006 diagnostics
+init.rs           | 13 tests | Project scaffolding template
+main.rs           | 24 tests | CLI parsing, run loop, gates, helpers
+integration_test  | 6 tests  | End-to-end flows
 ```
 
 ---
@@ -148,12 +157,11 @@ cargo fmt-check    # Verify formatting
 
 ## Cycle Types (Defined in cycles.toml)
 
-**Coding**: TODO.md task → plan → implement (TDD) → test → lint | Perms: Read|Edit(./src/**)|Edit(./tests/**)|Bash(cargo *)
-**Gardening**: Deps update|refactor|docs|dead code|coverage | Perms: Read|Edit(./Cargo.toml)|Bash(cargo update *) | Triggers: after=[coding], min_interval=3
-**Review**: Goal-backward verification — EXISTS|SUBSTANTIVE|WIRED checks | Perms: Read (read-only) | Triggers: after=[coding], min_interval=2
-**Planning**: Analyze TODO|create plans|prioritize|scope tasks | Perms: Read|Edit(./TODO.md)|Edit(./plans/**)|Bash(git *)
-
-All current cycles are single-step. Phase 2 adds multi-step cycles with session affinity (see [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)).
+**Coding** (multi-step): plan → plan-review (LLM routed) → implement (TDD) | Global perms + Edit(./TODO.md)|Edit(./AGENTS.md)|Bash(git *)
+**Gardening**: Deps update|refactor|dead code|coverage | Perms: Edit(./Cargo.toml)|Bash(git *) | Triggers: after=[coding], min_interval=25
+**Review**: Goal-backward verification — EXISTS|SUBSTANTIVE|WIRED checks | Perms: read-only | Manual trigger only
+**Docs**: Update README and user-facing docs | Perms: Edit(./README.md)|Edit(./docs/**)|Bash(git *) | Triggers: after=[coding], min_interval=3
+**Planning**: Analyze TODO|create plans|prioritize|scope tasks | Perms: Edit(./TODO.md)|Edit(./AGENTS.md)|Edit(./plans/**)|Bash(git *) | Manual trigger only
 
 **Permission Model**: Hierarchical additive (global + per-cycle + per-step, only adds never removes). Uses native Claude Code `--allowedTools` syntax (e.g., `Read`, `Edit(./src/**)`, `Bash(cargo *)`)
 
@@ -190,34 +198,42 @@ flow/
 ├── PLANNING_QUESTIONS.md  ← Decisions & rationale
 ├── README.md              ← Public-facing docs
 ├── Cargo.toml             ← Deps + lints config
-├── cycles.toml            ← Cycle definitions (coding + gardening)
+├── cycles.toml            ← Cycle definitions (coding + gardening + review + docs + planning)
 ├── .flow/                 ← Runtime state (gitignored)
-│   ├── log.jsonl          ← Cycle execution history (8 entries from 2 dogfoods)
-│   └── progress.json      ← Real-time progress (Phase 2)
+│   ├── log.jsonl          ← Cycle execution history
+│   ├── progress.json      ← Real-time run progress (written during execution, deleted on completion)
+│   ├── current-plan.md    ← Written by coding cycle's plan step
+│   └── plan-review.md     ← Written by coding cycle's plan-review step
 ├── plans/
 │   ├── 001-mvp-pipeline-runner.md  ← Original MVP plan (superseded)
 │   ├── 002-full-architecture.md    ← Complete architecture (read for deep dive)
-│   ├── 003-multi-step-cycles.md    ← Multi-step cycles with session affinity (Phase 2)
+│   ├── 003-multi-step-cycles.md    ← Multi-step cycles with session affinity
 │   └── TEMPLATE.md                  ← Template for new plans
 ├── src/
-│   ├── main.rs            ← CLI entry (clap + execution loop)
-│   ├── lib.rs             ← Public API
+│   ├── main.rs            ← CLI entry (clap subcommands, execution loop, signal handling)
+│   ├── lib.rs             ← Public API re-exports
+│   ├── init.rs            ← `flow init` scaffolding
+│   ├── doctor.rs          ← Diagnostic engine (D001–D006)
+│   ├── testutil.rs        ← Shared test helpers (make_test_outcome)
 │   ├── cycle/
-│   │   ├── config.rs      ← Parse cycles.toml (29 + 10 tests)
-│   │   ├── executor.rs    ← Execute cycles (16 tests)
-│   │   ├── rules.rs       ← Dependency triggers (8 tests)
-│   │   └── selector.rs    ← AI-driven cycle selection (27 tests)
+│   │   ├── config.rs      ← Parse cycles.toml (CycleConfig, StepConfig, GlobalConfig)
+│   │   ├── executor.rs    ← Single+multi-step execution, StepAggregator
+│   │   ├── rules.rs       ← Dependency triggers + frequency constraints
+│   │   ├── selector.rs    ← AI-driven cycle selection
+│   │   ├── router.rs      ← Step routing (sequential + LLM)
+│   │   └── context.rs     ← Iteration context injection
 │   ├── claude/
-│   │   ├── cli.rs         ← CLI command builder (8 tests)
-│   │   ├── permissions.rs ← Permission resolver (7 tests)
-│   │   ├── stream.rs      ← Stream-JSON parser (23 tests)
-│   │   └── session.rs     ← Session manager (Phase 2, planned)
+│   │   ├── cli.rs         ← CLI command builder with session resume
+│   │   ├── permissions.rs ← 3-layer permission resolver (global+cycle+step)
+│   │   ├── stream.rs      ← Stream-JSON parser (events, files, tests, session_id)
+│   │   └── session.rs     ← Session tag→ID mapping for step affinity
 │   ├── cli/
-│   │   └── display.rs     ← Rich CLI display (13 tests)
+│   │   └── display.rs     ← Rich display, status bar, health colors, doctor report
 │   └── log/
-│       └── jsonl.rs       ← JSONL logger (8 tests)
+│       ├── jsonl.rs       ← JSONL logger (CycleOutcome, StepOutcome)
+│       └── progress.rs    ← Atomic progress.json writer (RunProgress, RunStatus)
 └── tests/
-    └── integration_test.rs ← End-to-end tests (6 tests)
+    └── integration_test.rs ← End-to-end tests
 ```
 
 ---
@@ -247,15 +263,15 @@ See plans/002-full-architecture.md for cycles.toml format examples and implement
 
 ## Quick Wins for New Contributors
 
-**Phase 1 is complete. Phase 2 is partially complete** (status bar, doctor, multi-iteration, cycle selector, multi-step cycles all done). Remaining Phase 2 tasks:
+**Phase 1 complete. Phase 2 nearly complete.** Remaining Phase 2 tasks:
 
-**Medium**: Add plan + plan-review steps to coding cycle → extend `cycles.toml`, depends on multi-step executor (done)
-**Medium**: LLM-driven step routing — `router = "llm"` field for conditional branching after steps
-**Easy**: `flow init` — scaffold cycles.toml + .flow/ for new projects → `src/init.rs` (new)
-**Medium**: `flow plan` — quick idea capture + interactive deep planning → `src/plan.rs` (new)
+**Medium**: Add `[selector]` config section to cycles.toml — decouple selector from `--todo` flag
+**Easy**: Periodic summary output every N iterations during multi-iteration runs
+**Easy**: Show iteration progress in status bar (`[3/10] [coding] ▶ ...`)
+**Medium**: `flow doctor --repair` auto-fix mode for safe config fixes
 
 See [TODO.md](./TODO.md) for full task list.
 
 ---
 
-**Last Updated**: 2026-02-17 | **Status**: Phase 1 complete, Phase 2 in progress (status bar, doctor, multi-iteration, cycle selector, multi-step cycles done) | **Next Milestone**: Plan+plan-review steps in coding cycle
+**Last Updated**: 2026-02-18 | **Status**: Phase 1 complete, Phase 2 nearly complete (355 tests) | **Next Milestone**: Selector config section → close Phase 2

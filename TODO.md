@@ -5,116 +5,65 @@
 
 ---
 
-## Phase 2: Automation (in progress)
+## Phase 2: Automation (wrapping up)
 
-### Iteration Context
-- [x] Implement context modes (full, summaries, none)
+### P0 — Required to close Phase 2
+
+- [ ] Update AGENTS.md to reflect current state
   - Priority: P0
-  - Description: The `context` field is parsed from config but not yet used. Inject log history into cycle prompts based on the mode.
-  - Completed: 2026-02-17
+  - Description: AGENTS.md is severely stale. Test counts say 270 (actual: 355). File organization is missing 6 source files (`context.rs`, `router.rs`, `session.rs`, `init.rs`, `doctor.rs`, `progress.rs`, `testutil.rs`). Component status test counts are outdated. Phase status still says "Next: Plan+plan-review steps" (done). Quick Start suggests tasks that are all completed. Docs cycle not mentioned in Cycle Types. Needs a full refresh.
+  - Files: `AGENTS.md`
 
-- [x] Context injection into cycle prompts
+- [ ] Move completed Phase 2 items to COMPLETED.md
   - Priority: P0
-  - Completed: 2026-02-17
+  - Description: TODO.md has ~15 checked-off items cluttering it. Move them to COMPLETED.md under a "Phase 2: Automation" section, preserving completion dates and component details.
+  - Files: `TODO.md`, `COMPLETED.md`
 
-### Multi-Step Cycles (Session Reuse)
-- [x] Implement step executor with session affinity
-  - Priority: P0
-  - Plan: [plans/003-multi-step-cycles.md](./plans/003-multi-step-cycles.md)
-  - Completed: 2026-02-17
-  - Components: `StepConfig` in config.rs, `SessionManager` in session.rs, multi-step execution in executor.rs, `StepOutcome` in jsonl.rs, `resolve_step_permissions` in permissions.rs, `build_command_with_session` in cli.rs, `StreamAccumulator.session_id` capture
+### P1 — Important Phase 2 follow-ups
 
-- [x] Per-step permissions
+- [ ] Add `[selector]` config section to cycles.toml
   - Priority: P1
-  - Completed: 2026-02-17
-  - Description: Each step can have its own permissions (additive on top of cycle + global). Implemented as `resolve_step_permissions(global, cycle, step)`.
+  - Description: Replace the `--todo` CLI flag with a `[selector]` section in `cycles.toml`. Add a `prompt` field that provides guidance to the AI selector (e.g., "Read TODO.md for priorities. Focus on P0 tasks first."). This decouples the selector from a specific file convention and keeps all orchestration config in one place. Implementation: add `SelectorConfig` to `config.rs`, wire into `select_cycle()` in `selector.rs`, deprecate `--todo` flag.
+  - Files: `src/cycle/config.rs`, `src/cycle/selector.rs`, `src/main.rs`, `cycles.toml`
 
-- [x] Add plan + plan-review steps to coding cycle
+- [ ] Enrich selector context with recent outcomes
   - Priority: P1
-  - Completed: 2026-02-17
-  - Description: Converted `cycles.toml` coding cycle into a three-step multi-step cycle: (1) **plan** step — architect session reads TODO.md/AGENTS.md and writes implementation plan to `.flow/current-plan.md`; (2) **plan-review** step — architect continues session, critically evaluates the plan, writes APPROVED/REJECTED to `.flow/plan-review.md`, can `exit 1` to halt cycle on rejection; (3) **implement** step — coder session reads the approved plan and implements with TDD. Added config test `test_actual_cycles_toml_coding_is_multi_step` to verify real cycles.toml structure.
+  - Depends on: `[selector]` config (can be done independently but better sequenced after)
+  - Description: The selector currently gets cycle counts and TODO priorities but not a summary of recent outcomes. Feed the selector the last 5-10 cycle outcomes (name, success/failure, files changed, key accomplishments) so it can make better routing decisions — e.g., skip gardening if last gardening found nothing, prioritize review if several coding cycles completed without one.
+  - Files: `src/cycle/selector.rs`, `src/main.rs`
 
-- [x] Step-level routing: LLM-driven next-step selection
+- [ ] Periodic summary output every N iterations
   - Priority: P1
-  - Depends on: step executor (multi-step cycles)
-  - Completed: 2026-02-18
-  - Description: After each step completes, determine the next step to run. Default is `sequential` (proceed to the next step in TOML order). For steps that need conditional branching, allow an optional `router = "llm"` field in TOML: the step executor posts the completed step's `result_text` + the cycle's available step names to a model (same pattern as the cycle selector in `src/cycle/selector.rs`), and gets back a next-step name. Enforce a `max_visits` cap per step (default 3) to prevent infinite loops. Steps without `router` always proceed sequentially (backward compatible).
-  - Components: `StepRouter` enum and `max_visits` field in config.rs, `src/cycle/router.rs` (new) with `RouteDecision`, `VisitTracker`, `route_sequential()`, `build_router_prompt()`, `parse_router_response()`, `route_with_llm()`, `determine_next_step()`. `StepAggregator` extracted in executor.rs. 28 new tests (22 router + 6 config).
+  - Description: During multi-iteration runs, print a summary every N iterations (configurable, default 5): total cost so far, cycle breakdown (coding×4, gardening×1), test count trend, success rate. Helps users monitor long runs without reading raw output. Data is already available in `RunProgress` and log entries.
+  - Files: `src/cli/display.rs`, `src/main.rs`
 
-### Outcome Data Completeness
-- [x] Populate `files_changed` from stream data or git diff
+- [ ] Show iteration progress in status bar
   - Priority: P1
-  - Description: Parse file paths from Edit/Write ToolUse events in the stream. StreamAccumulator now tracks `files_changed` (deduplicated). Wired through CycleResult → build_outcome → CycleOutcome.
-  - Completed: 2026-02-18
+  - Description: The status bar currently shows `[coding] ▶ 12 turns | $1.23 | 2m 15s | 0 errors`. Add iteration context: `[3/10] [coding] ▶ ...` and cumulative stats: `[coding×2, gardening×1]`. Requires passing iteration number and `RunProgress` into the status bar renderer.
+  - Files: `src/cli/display.rs`, `src/cycle/executor.rs`
 
-- [x] Populate `tests_passed` from stream data or cargo output
-  - Priority: P1
-  - Description: Parse `N passed` from cargo test output in non-error ToolResult content. StreamAccumulator accumulates `tests_passed` across all tool results. Wired through CycleResult → build_outcome → CycleOutcome.
-  - Completed: 2026-02-18
-
-### Multi-Cycle Health Tracking
-- [x] Track cumulative health across iterations
-  - Priority: P0
-  - Description: If N cycles in a row fail or have high denial rates, stop the whole run.
-  - Completed: 2026-02-17
-
-### Enhanced Observability
-- [x] Implement .flow/progress.json writer
-  - Priority: P1
-  - Completed: 2026-02-18
-  - Description: `ProgressWriter` manages `.flow/progress.json` with atomic writes (temp+rename). `RunProgress` struct tracks started_at, current_iteration, max_iterations, current_cycle, current_status, cycles_executed (BTreeMap), total_duration_secs, last_outcome. `RunStatus` enum: Running/Completed/Failed/Stopped. Wired into main.rs iteration loop — writes before/after each cycle execution (primary + dependent), final status on completion, deletes on normal exit. 11 new tests.
-  - Components: `src/log/progress.rs` (new) with `RunProgress`, `RunStatus`, `ProgressWriter`; re-exported from `src/log/mod.rs` and `src/lib.rs`; `update_progress_after_cycle()` helper in main.rs
-
-- [ ] Periodic summary output (every N iterations)
-  - Priority: P1
-
-### Signal Handling
-- [x] Handle ctrl+c (SIGINT) gracefully during run
-  - Priority: P0
-  - Completed: 2026-02-18
-  - Description: Installed `tokio::signal::ctrl_c()` handler that sets an `Arc<AtomicBool>` shutdown flag. The `CycleExecutor` accepts the flag and threads it through to `run_command_with_display`, where `tokio::select!` races line reads against a 100ms shutdown poll for responsive (<200ms) termination. Child processes are killed immediately. Main loop checks the flag between iterations and before dependent cycle triggers. `progress.json` is written with `Stopped` status on interrupt. Extracted `validate_cli()`, `install_signal_handler()`, `run_dependent_cycles()`, and `finalize_run()` helpers from main to stay under clippy line limits.
-  - Components: `shutdown: Arc<AtomicBool>` field in `CycleExecutor`, `tokio::select!` in `run_command_with_display`, signal handler spawn + shutdown checks in main.rs, `finalize_run()` helper. 3 new executor tests.
-
-### Status Bar
-- [ ] Show cycle count in status bar
-  - Priority: P1
-  - Description: Display how many cycles have been executed in the current session (e.g. "Iteration 3/10 | Cycles: coding×2, gardening×1"). Helps the user understand run progress at a glance.
-
-### Gardening Frequency
-- [x] Investigate/tune gardening running too frequently
-  - Priority: P1
-  - Completed: 2026-02-18
-  - Description: Root cause: `after = ["coding"]` auto-trigger + AI selector both choosing gardening with only `min_interval = 5`. Fixed by raising `min_interval` to 25 in cycles.toml. Selector-side gating still a future improvement.
-
-### AI Selector Improvements
-- [ ] Replace `--todo` with a selector prompt in cycles.toml
-  - Priority: P1
-  - Description: The `--todo` flag that passes a TODO.md path is an antipattern — it couples the selector to a specific file convention and requires a CLI arg. Instead, the selector's guidance should be configured in `cycles.toml` (e.g. a `[selector]` section with a prompt field like `prompt = "Read TODO.md for priorities. Focus on P0 tasks first."`). This keeps all orchestration config in one place. The selector also needs richer context to make good decisions: (1) a log/summary of what's been done previously (recent cycle outcomes, not just counts), (2) the full cycle config (names, descriptions, step structure) so it understands what each cycle actually does and can make informed routing decisions.
-
-### Commands
 - [ ] `flow doctor --repair` auto-fix mode
   - Priority: P1
-  - Description: Auto-apply safe fixes (add missing permissions, set recommended min_interval). Non-destructive only.
+  - Description: Add `--repair` flag to the doctor subcommand. Auto-apply safe, non-destructive fixes: (1) add missing permissions suggested by D001, (2) set `min_interval` on triggered cycles per D004 suggestions. Read cycles.toml, apply fixes, write back, report what changed. Skip anything destructive.
+  - Files: `src/doctor.rs`, `src/main.rs`, `src/cycle/config.rs` (needs a `write_config()` or similar)
 
-- [x] `flow init` — scaffold cycles.toml + .flow/ for new projects
-  - Priority: P1
-  - Description: Static template with coding + gardening cycles and reasonable global permissions.
-  - Completed: 2026-02-17
-  - Components: `src/init.rs` (new) with `init()` fn + `CYCLES_TOML_TEMPLATE`, `Init` subcommand in main.rs, `run_init()` handler. 13 lib tests + 1 main test.
+### P2 — Nice to have (may defer to Phase 3)
 
 - [ ] `flow plan '<idea>'` — quick idea capture
-  - Priority: P1
-  - Description: One-shot. Claude reads TODO.md and project context, appends well-scoped tasks.
+  - Priority: P2
+  - Description: One-shot command. Claude reads TODO.md and project context, appends well-scoped tasks based on the idea. Example: `flow plan 'add timeout support'` would analyze the codebase and add specific TODO entries.
+  - Files: new `src/plan.rs`, `src/main.rs`
 
 - [ ] `flow plan` (no args) — interactive deep planning
-  - Priority: P1
-  - Description: Conversational planning session. Produces TODO.md tasks, optional plans/*.md files.
+  - Priority: P2
+  - Description: Conversational planning session. Claude analyzes project state, produces TODO.md tasks and optional `plans/*.md` files. More thorough than quick capture.
+  - Files: new `src/plan.rs`, `src/main.rs`
 
 ---
 
 ## Phase 3: Advanced Features (future)
 
-- [ ] Template prompts with variables
+- [ ] Template prompts with variables (e.g., `{{todo_file}}`, `{{project_name}}`)
 - [ ] Per-cycle timeout configuration
 - [ ] Parallel cycle execution (wave-based)
 - [ ] Model profiles (different models for coding/review/planning)
